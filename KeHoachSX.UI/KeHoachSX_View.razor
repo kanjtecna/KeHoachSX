@@ -1,0 +1,734 @@
+@page "/kehoachsx"
+@using System.Globalization
+@using System.IO
+@inject IAssemblyEmployeeService EmployeeService
+@inject IWeeklyPlanParserService PlanParserService
+@inject IAutoDispatchService DispatchService
+@inject ISkillMatrixService SkillMatrix
+@inject IPlatformService PlatformService
+@inject NavigationManager NavManager
+
+<div class="page-container">
+    <Header />
+
+    <div class="container-fluid px-4 py-3">
+        <!-- TIÊU ĐỀ & TRẠNG THÁI HỆ THỐNG -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+            <div>
+                <h3 class="fw-bold text-primary mb-1">
+                    <i class="fa fa-calendar-alt me-2"></i>Kế Hoạch & Phân Công Sản Xuất Lắp Ráp
+                </h3>
+                <small class="text-muted">
+                    Hệ thống phân chia công việc thông minh dựa trên Ma trận Kỹ năng (Skill Matrix) & Cân bằng tải nhà xưởng JTEC
+                </small>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary px-3 py-2 fs-6">
+                    <i class="fa fa-users me-1"></i> @_allWorkers.Count Công nhân Lắp ráp
+                </span>
+                <span class="badge bg-secondary px-3 py-2 fs-6">
+                    <i class="fa fa-clock me-1"></i> Ca: @_currentShift.StartTime.ToString(@"hh\:mm") - @_currentShift.EndTime.ToString(@"hh\:mm") (6 ngày/tuần)
+                </span>
+            </div>
+        </div>
+
+        <!-- THÔNG BÁO HOẶC LỖI NẾU CÓ -->
+        @if (!string.IsNullOrEmpty(_statusMessage))
+        {
+            <div class="alert alert-info alert-dismissible fade show shadow-sm py-2" role="alert">
+                <i class="fa fa-info-circle me-2"></i>@_statusMessage
+                <button type="button" class="btn-close py-2" @onclick="() => _statusMessage = string.Empty"></button>
+            </div>
+        }
+
+        <!-- 4 THẺ CHỈ SỐ KPI CHÍNH -->
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="card kpi-card p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted small fw-bold text-uppercase">Tổng giờ kế hoạch</span>
+                            <h4 class="fw-bold mb-0 text-dark">
+                                @((_currentResult?.TotalPlanMinutes ?? _currentLots.Sum(l => l.ThoiGianThucTe) / 60.0).ToString("0.0")) <small class="fs-6 text-muted">giờ</small>
+                            </h4>
+                            <small class="text-primary">@_currentLots.Count Lot sản phẩm</small>
+                        </div>
+                        <div class="kpi-icon bg-primary text-white">
+                            <i class="fa fa-tasks"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card kpi-card p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted small fw-bold text-uppercase">Năng lực xưởng tuần</span>
+                            <h4 class="fw-bold mb-0 text-success">
+                                @(((_allWorkers.Count * _currentShift.TotalWeeklyWorkingMinutes) / 60.0).ToString("0.0")) <small class="fs-6 text-muted">giờ</small>
+                            </h4>
+                            <small class="text-muted"></small>
+                        </div>
+                        <div class="kpi-icon bg-success text-white">
+                            <i class="fa fa-bolt"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card kpi-card p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted small fw-bold text-uppercase">Tỷ lệ lấp đầy (Load)</span>
+                            <h4 class="fw-bold mb-0 @GetLoadColorClass(_currentResult?.OverallUtilizationPercentage ?? 0)">
+                                @((_currentResult?.OverallUtilizationPercentage ?? 0).ToString("0.0"))%
+                            </h4>
+                            <small class="text-muted">Cân bằng chuyền lắp ráp</small>
+                        </div>
+                        <div class="kpi-icon @GetLoadBadgeBgClass(_currentResult?.OverallUtilizationPercentage ?? 0) text-white">
+                            <i class="fa fa-chart-line"></i>
+                        </div>
+                    </div>
+                    <div class="progress progress-thin mt-2">
+                        <div class="progress-bar @GetProgressBarClass(_currentResult?.OverallUtilizationPercentage ?? 0)"
+                             style="width: @(Math.Min(100, _currentResult?.OverallUtilizationPercentage ?? 0))%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-3">
+                <div class="card kpi-card p-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="text-muted small fw-bold text-uppercase">Tình trạng phân công</span>
+                            <h4 class="fw-bold mb-0 text-info">
+                                @(_currentResult?.AssignedLotsCount ?? 0) / @_currentLots.Count
+                            </h4>
+                            <small class="@((_currentResult?.UnassignedLotsCount ?? 0) > 0 ? "text-danger fw-bold" : "text-success")">
+                                @((_currentResult?.UnassignedLotsCount ?? 0) > 0 ? $"Còn {_currentResult!.UnassignedLotsCount} Lot chưa phân bổ" : "Đã phân bổ 100%")
+                            </small>
+                        </div>
+                        <div class="kpi-icon bg-info text-white">
+                            <i class="fa fa-clipboard-check"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BĂNG ĐIỀU KHIỂN & THANH CÔNG CỤ -->
+        <div class="card shadow-sm border-0 mb-3">
+            <div class="card-body p-3">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                    <!-- KHỐI 1: NẠP DỮ LIỆU & PHÂN CHIA -->
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <label class="btn btn-outline-primary mb-0" style="cursor: pointer;">
+                            <i class="fa fa-file-excel me-1"></i> Nhập File Kế Hoạch Tuần (.csv, .xlsx)
+                            <InputFile OnChange="OnPlanFileUploaded" accept=".csv,.xlsx,.xls" style="display: none;" />
+                        </label>
+
+
+                        <button class="btn btn-success fw-bold px-3" @onclick="ExecuteAutoDispatch" disabled="@(!_currentLots.Any() || _isLoading)">
+                            @if (_isLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                <span>Đang xử lý...</span>
+                            }
+                            else
+                            {
+                                <i class="fa fa-play me-1"></i>
+                                <span>Tự Động Phân Chia (Auto Dispatch)</span>
+                            }
+                        </button>
+
+                        @if (_currentLots.Any())
+                        {
+                            <button class="btn btn-outline-danger btn-sm" @onclick="ClearCurrentPlan" title="Xóa kế hoạch hiện tại">
+                                <i class="fa fa-trash"></i> Xóa
+                            </button>
+                        }
+                    </div>
+
+                    <!-- KHỐI 2: TÌM KIẾM & BỘ LỌC CÔNG NHÂN -->
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="input-group input-group-sm" style="width: 250px;">
+                            <span class="input-group-text bg-white border-end-0"><i class="fa fa-search text-muted"></i></span>
+                            <input type="text" class="form-control border-start-0" placeholder="Tìm công nhân (mã/tên)..." @bind="_searchWorker" @bind:event="oninput" />
+                        </div>
+
+                        <select class="form-select form-select-sm" style="width: 170px;" @bind="_selectedProductFilter">
+                            <option value="">-- Tất cả mã SP --</option>
+                            @foreach (var p in _currentLots.Select(l => l.MaSanPham).Distinct().OrderBy(x => x))
+                            {
+                                <option value="@p">@p</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+
+                <!-- TABS CHỌN NGÀY TRONG TUẦN -->
+                <div class="d-flex flex-wrap align-items-center gap-2 mt-3 pt-2 border-top">
+                    <span class="text-muted small fw-bold me-2"><i class="fa fa-calendar-day"></i> Chế độ xem:</span>
+                    <button class="btn day-tab-btn @(_selectedDayIndex == -1 ? "btn-primary text-white" : "btn-outline-secondary")"
+                            @onclick="() => _selectedDayIndex = -1">
+                        Toàn Tuần (6 Ngày)
+                    </button>
+
+                    @for (int i = 0; i < _dayNames.Length; i++)
+                    {
+                        int dayIdx = i;
+                        double dayMins = GetTotalMinutesForDay(dayIdx);
+                        <button class="btn day-tab-btn @(_selectedDayIndex == dayIdx ? "btn-primary text-white" : "btn-outline-secondary")"
+                                @onclick="() => _selectedDayIndex = dayIdx">
+                            @_dayNames[dayIdx]
+                            <span class="badge @(_selectedDayIndex == dayIdx ? "bg-white text-primary" : "bg-light text-dark") ms-1">
+                                @((dayMins / 60.0).ToString("0.0"))h
+                            </span>
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- TIMELINE GANTT CHART -->
+        <div class="timeline-board p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+                <h5 class="fw-bold text-dark mb-0">
+                    <i class="fa fa-stream text-primary me-2"></i>Biểu Đồ Tiến Trình Công Việc Công Nhân (Timeline)
+                </h5>
+                <div class="d-flex align-items-center gap-3 text-muted small">
+                    <span><i class="fa fa-circle text-primary"></i> Khối Lot nhiệm vụ</span>
+                    <span><i class="fa fa-star text-warning"></i> Thợ từng làm mã này</span>
+                    <span><span style="display:inline-block; width:14px; height:10px; background:#e9ecef; border:1px solid #ced4da;"></span> Vùng nghỉ giải lao/trưa</span>
+                </div>
+            </div>
+
+            <div class="overflow-auto border rounded bg-white" style="min-height: 450px;">
+                <div style="min-width: 1300px;">
+                    <!-- HEADER MỐC THỜI GIAN TRONG NGÀY -->
+                    <div class="d-flex timeline-header-cell">
+                        <div class="worker-sidebar px-3 d-flex align-items-center justify-content-between">
+                            <span><i class="fa fa-user text-primary me-1"></i> Công nhân</span>
+                            <span class="badge bg-light text-dark border">Tải tuần</span>
+                        </div>
+                        <div class="flex-grow-1 position-relative h-100">
+                            @{
+                                double maxMins = _currentShift.TotalElapsedMinutesPerDay;
+                            }
+                            @foreach (var tick in GetTimelineTicks())
+                            {
+                                TimeSpan t = _currentShift.StartTime.Add(TimeSpan.FromMinutes(tick));
+                                double leftP = (tick / maxMins) * 100.0;
+                                string tickAlignment = tick == 0 ? "translateX(0)" : tick >= maxMins ? "translateX(-100%)" : "translateX(-50%)";
+                                <div class="position-absolute bottom-0 text-muted timeline-tick-label" style="left: @(leftP.ToString("0.00", CultureInfo.InvariantCulture))%; transform: @tickAlignment; font-size: 0.7rem; border-left: 1px solid #ced4da; padding-left: 3px; height: 26px;">
+                                    @t.ToString(@"hh\:mm")
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- DANH SÁCH DÒNG CỦA TỪNG CÔNG NHÂN - PHÂN THEO NHÓM -->
+                    @{
+                        var displayedWorkers = GetFilteredWorkers();
+                        // Nhóm công nhân theo GROUPBOPHAN, sắp xếp LR1 → LR4
+                        var workerGroups = displayedWorkers
+                            .GroupBy(w => w.GroupName, StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    }
+
+                    @if (!displayedWorkers.Any())
+                    {
+                        <div class="text-center py-5 text-muted">
+                            <i class="fa fa-user-slash fs-1 mb-2"></i>
+                            <p>Chưa có dữ liệu công nhân hoặc không tìm thấy công nhân phù hợp với từ khóa.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var group in workerGroups)
+                        {
+                            // ── TIÊU ĐỀ NHÓM ──────────────────────────────────────────────────
+                            var groupWorkers = group.ToList();
+                            double groupAssigned = groupWorkers.Sum(w => GetTasksForWorkerInView(w).Sum(t => t.ThoiGianThucTe));
+                            double groupCapacity = groupWorkers.Sum(w => _selectedDayIndex == -1 ? w.WeeklyCapacityMinutes : w.DailyCapacityMinutes);
+                            double groupRate = groupCapacity > 0 ? (groupAssigned / groupCapacity) * 100.0 : 0.0;
+                            <div class="d-flex align-items-center group-header-row" style="background: #e8eaf6; border-top: 2px solid #5c6bc0; border-bottom: 1px solid #9fa8da;">
+                                <!-- Nhãn nhóm bên trái (cùng chiều rộng với worker-sidebar) -->
+                                <div class="worker-sidebar px-3 py-2 d-flex align-items-center gap-2" style="background: transparent;">
+                                    <span class="badge fs-6 fw-bold px-3 py-1" style="background:#3949ab; color:#fff; min-width:56px; text-align:center;">
+                                        @group.Key
+                                    </span>
+                                    <span class="fw-bold text-dark small">Tổ @group.Key</span>
+                                    <span class="badge bg-white border text-secondary ms-1" style="font-size:0.72rem;">
+                                        @groupWorkers.Count người
+                                    </span>
+                                    <span class="badge @GetLoadBadgeBgClass(groupRate) ms-auto" style="font-size:0.72rem;">
+                                        Tải nhóm: @groupRate.ToString("0.0")%
+                                    </span>
+                                </div>
+                                <!-- Phần track trống, chỉ kẻ nền -->
+                                <div class="flex-grow-1" style="height: 32px; background: #e8eaf6;"></div>
+                            </div>
+
+                            @foreach (var worker in groupWorkers)
+                            {
+                                var tasksForWorker = GetTasksForWorkerInView(worker);
+                                double workerAssignedMins = tasksForWorker.Sum(t => t.ThoiGianThucTe);
+                                double targetCapacity = _selectedDayIndex == -1 ? worker.WeeklyCapacityMinutes : worker.DailyCapacityMinutes;
+                                double workerRate = targetCapacity > 0 ? (workerAssignedMins / targetCapacity) * 100.0 : 0.0;
+
+                                <div class="d-flex timeline-row align-items-center">
+                                    <!-- CỘT BÊN TRÁI: THÔNG TIN THỢ & TẢI -->
+                                    <div class="worker-sidebar px-3 py-1 d-flex flex-column justify-content-center h-100">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="fw-bold text-dark text-truncate" style="max-width: 140px;" title="@worker.FullName (@worker.WorkerId) — @worker.GroupName | HS: @worker.HieuSuat.ToString("0.#")%">
+                                                @worker.FullName
+                                            </span>
+                                            <span class="badge bg-secondary text-white small" style="font-size: 0.7rem;">
+                                                @worker.WorkerId
+                                            </span>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mt-1">
+                                            <small class="text-muted" style="font-size: 0.72rem;">
+                                                @((workerAssignedMins / 60.0).ToString("0.0")) / @((targetCapacity / 60.0).ToString("0.0"))h
+                                                <span class="text-info ms-1" title="Hiệu suất cá nhân">HS:@worker.HieuSuat.ToString("0.#")%</span>
+                                            </small>
+                                            <span class="badge @GetLoadBadgeBgClass(workerRate)" style="font-size: 0.7rem;">
+                                                @workerRate.ToString("0")%
+                                            </span>
+                                        </div>
+                                        <div class="progress progress-thin mt-1">
+                                            <div class="progress-bar @GetProgressBarClass(workerRate)" style="width: @(Math.Min(100, workerRate))%"></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- CỘT BÊN PHẢI: TRACK GANTT CHART -->
+                                    <div class="flex-grow-1 timeline-track h-100 position-relative">
+                                        <!-- CÁC VÙNG NGHỈ GIẢI LAO TRONG NGÀY -->
+                                        @foreach (var b in _currentShift.Breaks)
+                                        {
+                                            double bStart = (b.Start - _currentShift.StartTime).TotalMinutes;
+                                            double bDur   = b.DurationMinutes;
+                                            double leftP  = (bStart / maxMins) * 100.0;
+                                            double widthP = (bDur   / maxMins) * 100.0;
+
+                                            <div class="position-absolute top-0 bottom-0 break-zone"
+                                                 style="left: @(leftP.ToString("0.00", CultureInfo.InvariantCulture))%; width: @(widthP.ToString("0.00", CultureInfo.InvariantCulture))%;"
+                                                 title="@b.Name (@b.Start.ToString(@"hh\:mm") - @b.End.ToString(@"hh\:mm"))">
+                                            </div>
+                                        }
+
+                                        <!-- VẠCH KẺ GIỜ NẰM DỌC -->
+                                        @foreach (var tick in GetTimelineTicks())
+                                        {
+                                            double leftP = (tick / maxMins) * 100.0;
+                                            <div class="position-absolute top-0 bottom-0"
+                                                 style="left: @(leftP.ToString("0.00", CultureInfo.InvariantCulture))%; border-left: 1px dashed #e9ecef; z-index: 1;">
+                                            </div>
+                                        }
+
+                                        <!-- CÁC KHỐI NHIỆM VỤ (TASK CHUNKS) -->
+                                        @foreach (var task in tasksForWorker)
+                                        {
+                                            // Nếu đang xem 1 ngày cụ thể, chỉ hiển thị chunk của ngày đó
+                                            var chunksToDisplay = _selectedDayIndex == -1
+                                                ? task.Chunks
+                                                : task.Chunks.Where(c => task.DayIndex == _selectedDayIndex).ToList();
+
+                                            foreach (var chunk in chunksToDisplay)
+                                            {
+                                                double chunkLeft  = (chunk.StartMinute / maxMins) * 100.0;
+                                                double chunkWidth = (chunk.Duration    / maxMins) * 100.0;
+                                                if (chunkWidth <= 0) continue;
+
+                                                bool isHighlighted = string.IsNullOrEmpty(_selectedProductFilter) ||
+                                                                     task.MaSanPham.Equals(_selectedProductFilter, StringComparison.OrdinalIgnoreCase);
+
+                                                string opacityStyle = isHighlighted ? "opacity: 1;" : "opacity: 0.25;";
+
+                                                <div class="position-absolute top-0 bottom-0 d-flex flex-column justify-content-center align-items-center text-white gantt-chunk px-1"
+                                                     style="left: @(chunkLeft.ToString("0.00", CultureInfo.InvariantCulture))%; width: @(chunkWidth.ToString("0.00", CultureInfo.InvariantCulture))%; background-color: @task.ColorHex; z-index: 5; @opacityStyle"
+                                                     title="Mã SP: @task.MaSanPham &#10;Số Lot: @task.SoLot (TT: @task.TTLot) &#10;Thời gian TT: @task.ThoiGianThucTe.ToString("0.0") phút &#10;Định mức: @task.GioCongDinhMuc.ToString("0.0") phút &#10;Hiệu suất thợ: @worker.HieuSuat.ToString("0.#")% &#10;Kinh nghiệm: @(task.SkillCount > 0 ? $"{task.SkillCount} lần" : "Chưa từng làm") &#10;(Click để xem chi tiết)"
+                                                     @onclick="() => OpenLotDetail(task)">
+
+                                                    @if (chunkWidth >= 3.5)
+                                                    {
+                                                        <span style="font-size: 0.72rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 95%;">
+                                                            @task.MaSanPham
+                                                        </span>
+                                                        <div class="d-flex align-items-center gap-1" style="font-size: 0.65rem; color: #ffeb3b;">
+                                                            <span>Lot: @task.SoLot</span>
+                                                            @if (task.SkillCount > 0)
+                                                            {
+                                                                <span class="skill-star" title="Đã từng làm @task.SkillCount lần">★@task.SkillCount</span>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    else if (chunkWidth >= 1.5)
+                                                    {
+                                                        <span style="font-size: 0.6rem; font-weight: bold;">@task.SoLot</span>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- DANH SÁCH LOT CHƯA PHÂN BỔ (NẾU CÓ) -->
+        @if (_currentResult != null && _currentResult.UnassignedLots.Any())
+        {
+            <div class="card shadow-sm border-danger mt-3">
+                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fa fa-exclamation-triangle me-2"></i>Các Lot Chưa Thể Xếp Vào Lịch (Vượt Quá Năng Lực Tuần)</h6>
+                    <span class="badge bg-white text-danger">@_currentResult.UnassignedLots.Count Lot</span>
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-sm table-striped mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Mã Sản Phẩm</th>
+                                <th>Số Lot</th>
+                                <th>Số Lượng</th>
+                                <th>Định Mức (phút)</th>
+                                <th>Lý do</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var unassigned in _currentResult.UnassignedLots)
+                            {
+                                <tr>
+                                    <td class="fw-bold">@unassigned.MaSanPham</td>
+                                    <td>@unassigned.SoLot</td>
+                                    <td>@unassigned.SoLuong</td>
+                                    <td>@unassigned.ThoiGianThucTe.ToString("0.0")</td>
+                                    <td class="text-danger small">Tất cả công nhân lắp ráp phù hợp đã đầy tải 100% ca làm</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- MODAL CHI TIẾT LOT & ĐIỀU CHỈNH THỦ CÔNG -->
+@if (_showDetailModal && _selectedLot != null)
+{
+    <div class="modal-backdrop fade show" style="background: rgba(0,0,0,0.5); z-index: 1050;"></div>
+    <div class="modal fade show d-block" tabindex="-1" style="z-index: 1060;">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header text-white" style="background-color: @_selectedLot.ColorHex;">
+                    <h5 class="modal-title fw-bold">
+                        <i class="fa fa-info-circle me-2"></i>Chi Tiết Lot: @_selectedLot.MaSanPham - Lot @_selectedLot.SoLot
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => _showDetailModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <span class="text-muted small">Mã sản phẩm:</span>
+                            <div class="fw-bold fs-6">@_selectedLot.MaSanPham</div>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted small">Thứ tự Lot:</span>
+                            <div class="fw-bold fs-6">Lot @_selectedLot.SoLot (TT: @_selectedLot.TTLot)</div>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted small">Thời gian định mức:</span>
+                            <div class="fw-bold text-primary">@_selectedLot.ThoiGianThucTe.ToString("0.0") phút (@((_selectedLot.ThoiGianThucTe / 60.0).ToString("0.00")) giờ)</div>
+                        </div>
+                        <div class="col-6">
+                            <span class="text-muted small">Ngày phân bổ:</span>
+                            <div class="fw-bold text-success">@(_selectedLot.DayIndex >= 0 && _selectedLot.DayIndex < _dayNames.Length ? _dayNames[_selectedLot.DayIndex] : "Chưa gán")</div>
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-light rounded border mb-3">
+                        <label class="form-label fw-bold small text-muted text-uppercase mb-2">
+                            <i class="fa fa-user-check text-success me-1"></i>Công nhân được chỉ định:
+                        </label>
+                        <select class="form-select border-primary" @bind="_modalSelectedWorkerId">
+                            @foreach (var w in _allWorkers)
+                            {
+                                int exp = w.GetSkillCount(_selectedLot.MaSanPham);
+                                <option value="@w.WorkerId">
+                                    @w.FullName (@w.WorkerId) @(exp > 0 ? $"— [Đã từng làm {exp} lần ★]" : "— [Chưa từng làm]")
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <!-- DANH SÁCH THỢ CÓ KINH NGHIỆM CAO NHẤT MÃ NÀY -->
+                    <label class="form-label fw-bold small text-muted text-uppercase mb-1">
+                        <i class="fa fa-award text-warning me-1"></i>Top thợ có kinh nghiệm cao nhất mã này:
+                    </label>
+                    <div class="list-group list-group-flush border rounded small" style="max-height: 160px; overflow-y: auto;">
+                        @{
+                            var topExperts = SkillMatrix.GetTopExperiencedWorkers(_selectedLot.MaSanPham);
+                        }
+                        @if (topExperts.Any())
+                        {
+                            @foreach (var exp in topExperts.Take(5))
+                            {
+                                <div class="list-group-item d-flex justify-content-between align-items-center py-1">
+                                    <span>@exp.FullName (@exp.WorkerId)</span>
+                                    <span class="badge bg-warning text-dark fw-bold">@exp.Count lần</span>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="list-group-item text-muted py-2 text-center">
+                                Chưa có công nhân nào từng làm mã sản phẩm này trong lịch sử.
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => _showDetailModal = false">Đóng</button>
+                    <button type="button" class="btn btn-primary" @onclick="SaveManualWorkerAssignment">
+                        <i class="fa fa-check me-1"></i> Lưu thay đổi
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly ShiftConfig _currentShift = new ShiftConfig();
+    private readonly string[] _dayNames = new[] { "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7" };
+
+    private List<AssemblyWorker> _allWorkers = new();
+    private List<LotTask> _currentLots = new();
+    private DispatchResult? _currentResult = null;
+
+    private int _selectedDayIndex = -1; // -1: Cả tuần, 0..5: Từng ngày
+    private string _searchWorker = "";
+    private string _selectedProductFilter = "";
+    private string _statusMessage = "";
+    private bool _isLoading = false;
+
+    private bool _showDetailModal = false;
+    private LotTask? _selectedLot = null;
+    private string _modalSelectedWorkerId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isLoading = true;
+        try
+        {
+            // Tải danh sách công nhân lắp ráp từ DB (hoặc fallback từ JSON)
+            _allWorkers = await EmployeeService.GetActiveAssemblyWorkersAsync();
+
+            if (_allWorkers.Any())
+            {
+                var groupSummary = _allWorkers
+                    .GroupBy(w => w.GroupName, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(g => g.Key)
+                    .Select(g => $"{g.Key}: {g.Count()} người");
+
+                _statusMessage = $"Đã tải {_allWorkers.Count} công nhân lắp ráp ({string.Join(", ", groupSummary)}). " +
+                                 "Hãy nhập file kế hoạch tuần để bắt đầu phân chia công việc.";
+            }
+            else
+            {
+                _statusMessage = "⚠️ Không tìm thấy công nhân lắp ráp (LR1-LR4). " +
+                                 "Vui lòng kiểm tra kết nối CSDL hoặc file NHANVIEN.json.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Lỗi khởi tạo: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OnPlanFileUploaded(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+
+        _isLoading = true;
+        _statusMessage = $"Đang đọc dữ liệu từ file {file.Name}...";
+        StateHasChanged();
+
+        try
+        {
+            using var stream = new MemoryStream();
+            await file.OpenReadStream(25 * 1024 * 1024).CopyToAsync(stream);
+            stream.Position = 0;
+
+            var lots = await PlanParserService.ParseWeeklyPlanAsync(stream, file.Name);
+
+            if (lots.Any())
+            {
+                _currentLots = lots;
+                _statusMessage = $"Đã tải thành công {_currentLots.Count} Lot sản phẩm từ file '{file.Name}'. Đang tự động phân chia công việc...";
+                ExecuteAutoDispatch();
+            }
+            else
+            {
+                _statusMessage = "Không tìm thấy dữ liệu hợp lệ trong file tải lên.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Lỗi đọc file: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+
+    private void ExecuteAutoDispatch()
+    {
+        if (!_currentLots.Any() || !_allWorkers.Any()) return;
+
+        _isLoading = true;
+        try
+        {
+            var options = new DispatchOptions
+            {
+                BalanceWorkload = true,
+                PrioritizeExperiencedWorkers = true,
+                KeepSameProductContinuous = true
+            };
+
+            _currentResult = DispatchService.AutoDispatch(_currentLots, _allWorkers, _currentShift, options);
+            _statusMessage = $"Đã phân chia hoàn tất {_currentResult.AssignedLotsCount} Lot công việc. Tỷ lệ lấp đầy xưởng: {_currentResult.OverallUtilizationPercentage:0.0}%.";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Lỗi phân chia: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ClearCurrentPlan()
+    {
+        _currentLots.Clear();
+        _currentResult = null;
+        _statusMessage = "Đã làm mới kế hoạch.";
+    }
+
+    private List<AssemblyWorker> GetFilteredWorkers()
+    {
+        var list = _currentResult?.Workers ?? _allWorkers;
+
+        if (!string.IsNullOrWhiteSpace(_searchWorker))
+        {
+            string kw = _searchWorker.Trim();
+            list = list.Where(w => w.FullName.Contains(kw, StringComparison.OrdinalIgnoreCase) ||
+                                   w.WorkerId.Contains(kw, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        // Ưu tiên hiển thị những công nhân có việc làm lên trước
+        return list.OrderByDescending(w => w.TotalAssignedMinutes).ToList();
+    }
+
+    private List<LotTask> GetTasksForWorkerInView(AssemblyWorker worker)
+    {
+        if (_selectedDayIndex == -1)
+        {
+            // Cả tuần: Lấy tất cả các ngày
+            return worker.DailyTasks.Values.SelectMany(t => t).ToList();
+        }
+        else
+        {
+            // Xem ngày cụ thể
+            return worker.DailyTasks.TryGetValue(_selectedDayIndex, out var tasks) ? tasks : new List<LotTask>();
+        }
+    }
+
+    private double GetTotalMinutesForDay(int dayIndex)
+    {
+        if (_currentResult == null) return 0;
+        return _currentResult.Workers.Sum(w => w.GetDayAssignedMinutes(dayIndex));
+    }
+
+    private IEnumerable<double> GetTimelineTicks()
+    {
+        double totalMinutes = _currentShift.TotalElapsedMinutesPerDay;
+        for (double minute = 0; minute <= totalMinutes; minute += 30)
+        {
+            yield return Math.Min(minute, totalMinutes);
+        }
+    }
+
+    private void OpenLotDetail(LotTask task)
+    {
+        _selectedLot = task;
+        _modalSelectedWorkerId = task.AssignedWorkerId ?? "";
+        _showDetailModal = true;
+    }
+
+    private void SaveManualWorkerAssignment()
+    {
+        if (_selectedLot == null || string.IsNullOrWhiteSpace(_modalSelectedWorkerId) || _currentResult == null) return;
+
+        var targetWorker = _currentResult.Workers.FirstOrDefault(w => w.WorkerId == _modalSelectedWorkerId);
+        if (targetWorker == null) return;
+
+        // Xóa task khỏi công nhân cũ
+        foreach (var w in _currentResult.Workers)
+        {
+            foreach (var d in w.DailyTasks.Values)
+            {
+                d.RemoveAll(t => t.Id == _selectedLot.Id);
+            }
+        }
+
+        // Cập nhật người mới
+        _selectedLot.AssignedWorkerId = targetWorker.WorkerId;
+        _selectedLot.AssignedWorkerName = targetWorker.FullName;
+        _selectedLot.SkillCount = targetWorker.GetSkillCount(_selectedLot.MaSanPham);
+
+        int day = Math.Max(0, Math.Min(_dayNames.Length - 1, _selectedLot.DayIndex));
+        targetWorker.DailyTasks[day].Add(_selectedLot);
+
+        _showDetailModal = false;
+        _statusMessage = $"Đã chuyển Lot {_selectedLot.SoLot} ({_selectedLot.MaSanPham}) sang cho thợ {targetWorker.FullName}.";
+    }
+
+    private string GetLoadColorClass(double percent)
+    {
+        if (percent > 100) return "text-danger";
+        if (percent >= 70) return "text-success";
+        return "text-warning";
+    }
+
+    private string GetLoadBadgeBgClass(double percent)
+    {
+        if (percent > 100) return "bg-danger";
+        if (percent >= 70) return "bg-success";
+        return "bg-warning text-dark";
+    }
+
+    private string GetProgressBarClass(double percent)
+    {
+        if (percent > 100) return "bg-danger";
+        if (percent >= 70) return "bg-success";
+        return "bg-warning";
+    }
+}

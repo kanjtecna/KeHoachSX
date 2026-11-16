@@ -1,0 +1,40 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build output
+**/bin/
+**/obj/
+[Bb]uild/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa]rtifacts/
+
+# Test output
+[Tt]est[Rr]esults/
+*.trx
+
+# IDE and tooling
+.idea/
+.vscode/
+_ReSharper*/
+*.DotSettings.user
+
+# Logs and local databases
+*.log
+*.sqlite-shm
+*.sqlite-wal
+
+# Publish output
+publish/
+
+# Local secrets/configuration
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.Local.json
+appsettings.json
