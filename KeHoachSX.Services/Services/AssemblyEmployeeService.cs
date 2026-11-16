@@ -1,232 +1,131 @@
-using Dapper;
 using Interfaces;
-using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Configuration;
+using KeHoachSX.Infrastructure.Repositories;
 using Models;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
 
-namespace Services
+namespace Services;
+
+public sealed class AssemblyEmployeeService : IAssemblyEmployeeService
 {
-    public class AssemblyEmployeeService : IAssemblyEmployeeService
+    private static readonly HashSet<string> AllowedGroups = new(StringComparer.OrdinalIgnoreCase)
+        { "LR1", "LR2", "LR3", "LR4" };
+    private static readonly HashSet<string> ExcludedLevels = new(StringComparer.OrdinalIgnoreCase)
+        { "CHIEF", "LEADE", "LEADER" };
+
+    private readonly IAssemblyEmployeeRepository _repository;
+    private readonly ISkillMatrixService _skillMatrix;
+
+    public AssemblyEmployeeService(IAssemblyEmployeeRepository repository, ISkillMatrixService skillMatrix)
     {
-        private readonly string _connectionString;
-        private readonly ISkillMatrixService _skillMatrix;
+        _repository = repository;
+        _skillMatrix = skillMatrix;
+    }
 
-        // Danh sách nhóm lắp ráp được phép phân công
-        private static readonly HashSet<string> AllowedGroups = new(StringComparer.OrdinalIgnoreCase)
-            { "LR1", "LR2", "LR3", "LR4" };
-
-        // Các cấp bậc bị loại trừ (không phân công) – LevelUser varchar(5)
-        private static readonly HashSet<string> ExcludedLevels = new(StringComparer.OrdinalIgnoreCase)
-            { "CHIEF", "LEADE", "LEADER" };
-
-        public AssemblyEmployeeService(IConfiguration configuration, ISkillMatrixService skillMatrix)
+    public async Task<List<AssemblyWorker>> GetActiveAssemblyWorkersAsync()
+    {
+        await _skillMatrix.EnsureLoadedAsync();
+        try
         {
-            _connectionString = configuration.GetConnectionString("Server30StockConnection")
-                                ?? configuration.GetConnectionString("DefaultConnection")
-                                ?? "";
-            _skillMatrix = skillMatrix;
+            var workers = await _repository.GetActiveAssemblyWorkersAsync();
+            if (workers.Count > 0) return AttachSkills(workers);
         }
-
-        public async Task<List<AssemblyWorker>> GetActiveAssemblyWorkersAsync()
+        catch (Exception ex)
         {
-            await _skillMatrix.EnsureLoadedAsync();
-            var workers = new List<AssemblyWorker>();
+            System.Diagnostics.Debug.WriteLine($"[AssemblyEmployeeService] DB unavailable; JSON fallback: {ex.Message}");
+        }
+        return await LoadJsonFallbackAsync();
+    }
 
-            // ────────────────────────────────────────────────
-            // 1. Lấy danh sách công nhân từ SQL Server
-            //    - STATUS = '1'  (đang làm việc)
-            //    - GROUPBOPHAN IN (LR1, LR2, LR3, LR4)
-            //    - LevelUser NOT IN ('CHIEF','LEADE','LEADER')
-            //    - Hiệu suất lấy từ HIEUSUATNHANVIEN, mặc định 20 nếu không có
-            // ────────────────────────────────────────────────
-            if (!string.IsNullOrWhiteSpace(_connectionString))
+    private List<AssemblyWorker> AttachSkills(IEnumerable<AssemblyWorker> workers)
+    {
+        return workers.Select(worker =>
+        {
+            worker.SkillMap = _skillMatrix.GetWorkerSkills(worker.WorkerId);
+            return worker;
+        }).OrderBy(w => w.GroupName, StringComparer.OrdinalIgnoreCase)
+          .ThenBy(w => w.WorkerId, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private async Task<List<AssemblyWorker>> LoadJsonFallbackAsync()
+    {
+        try
+        {
+            var employeePath = FindFile("NHANVIEN.json");
+            var efficiencyPath = FindFile("HIEUSUATNHANVIEN.json");
+            var efficiency = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+            if (efficiencyPath is not null)
             {
-                try
+                using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(efficiencyPath));
+                foreach (var row in GetArray(doc.RootElement, "HIEUSUATNHANVIEN"))
                 {
-                    using var connection = new SqlConnection(_connectionString);
-                    await connection.OpenAsync();
-
-                    const string sql = @"
-                        SELECT
-                            LTRIM(RTRIM(nv.UserName))    AS WorkerId,
-                            LTRIM(RTRIM(nv.Fullname))    AS FullName,
-                            LTRIM(RTRIM(nv.GROUPBOPHAN)) AS GroupName,
-                            CASE
-                                WHEN hs.HieuSuat > 0 THEN hs.HieuSuat
-                                ELSE 20.0
-                            END AS HieuSuat
-                        FROM STOCKMANAGEMENT.dbo.NHANVIEN nv
-                        OUTER APPLY (
-                            SELECT TOP (1)
-                                TRY_CONVERT(FLOAT, REPLACE(NULLIF(LTRIM(RTRIM(h.HIEUSUAT)), ''), ',', '.')) AS HieuSuat
-                            FROM STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN h
-                            WHERE LTRIM(RTRIM(h.IDNHANVIEN)) = LTRIM(RTRIM(nv.UserName))
-                            ORDER BY h.[No] DESC
-                        ) hs
-                        WHERE nv.STATUS = '1'
-                          AND UPPER(LTRIM(RTRIM(nv.GROUPBOPHAN))) IN ('LR1', 'LR2', 'LR3', 'LR4')
-                          AND UPPER(LTRIM(RTRIM(ISNULL(nv.LevelUser, '')))) NOT IN ('CHIEF', 'LEADE', 'LEADER')
-                        ORDER BY nv.GROUPBOPHAN, nv.UserName ASC";
-
-                    var dbWorkers = (await connection.QueryAsync<dynamic>(sql)).ToList();
-
-                    foreach (var w in dbWorkers)
-                    {
-                        string wId    = (string)w.WorkerId;
-                        string wName  = (string)w.FullName;
-                        string group  = (string)w.GroupName;
-                        double hs     = w.HieuSuat != null ? (double)w.HieuSuat : 20.0;
-
-                        workers.Add(new AssemblyWorker
-                        {
-                            WorkerId  = wId,
-                            FullName  = wName,
-                            GroupName = group,
-                            HieuSuat  = hs,
-                            SkillMap  = _skillMatrix.GetWorkerSkills(wId)
-                        });
-                    }
-
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[AssemblyEmployeeService] Tải {workers.Count} công nhân từ SQL Server.");
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[AssemblyEmployeeService] Lỗi kết nối SQL Server: {ex.Message}");
+                    var id = GetString(row, "IDNHANVIEN");
+                    var raw = GetString(row, "HIEUSUAT");
+                    if (double.TryParse(raw.Replace(',', '.'),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var value) && value > 0)
+                        efficiency[id] = value;
                 }
             }
 
-            // ────────────────────────────────────────────────
-            // 2. Fallback: đọc từ file JSON nếu không có kết nối DB
-            //    Tìm file NHANVIEN.json và HIEUSUATNHANVIEN.json
-            //    ở thư mục Documents hoặc cùng cấp module
-            // ────────────────────────────────────────────────
-            if (!workers.Any())
+            if (employeePath is null) return new();
+            using var employeeDoc = JsonDocument.Parse(await File.ReadAllTextAsync(employeePath));
+            var result = new List<AssemblyWorker>();
+
+            foreach (var row in GetArray(employeeDoc.RootElement, "NHANVIEN"))
             {
-                System.Diagnostics.Debug.WriteLine(
-                    "[AssemblyEmployeeService] DB không có dữ liệu, fallback đọc JSON...");
+                var status = GetString(row, "STATUS");
+                var group = GetString(row, "GROUPBOPHAN").Trim().ToUpperInvariant();
+                var level = GetString(row, "LevelUser").Trim().ToUpperInvariant();
+                var id = GetString(row, "UserName").Trim();
 
-                try
+                if (status != "1" || !AllowedGroups.Contains(group) ||
+                    ExcludedLevels.Contains(level) || string.IsNullOrWhiteSpace(id)) continue;
+
+                result.Add(new AssemblyWorker
                 {
-                    // Tìm file JSON ở các vị trí có thể có
-                    string? employeeJsonPath    = FindFile("NHANVIEN.json");
-                    string? efficiencyJsonPath  = FindFile("HIEUSUATNHANVIEN.json");
-
-                    // Đọc hiệu suất vào dict trước
-                    var efficiencyDict = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-                    if (efficiencyJsonPath != null)
-                    {
-                        var effRaw  = await File.ReadAllTextAsync(efficiencyJsonPath);
-                        var effRoot = JsonDocument.Parse(effRaw).RootElement;
-
-                        // Hỗ trợ 2 dạng JSON: Array gốc  hoặc { "HIEUSUATNHANVIEN": [...] }
-                        JsonElement effArray = effRoot.ValueKind == JsonValueKind.Array
-                            ? effRoot
-                            : effRoot.TryGetProperty("HIEUSUATNHANVIEN", out var inner) ? inner : default;
-
-                        if (effArray.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var item in effArray.EnumerateArray())
-                            {
-                                string id  = item.TryGetProperty("IDNHANVIEN", out var idProp) ? idProp.GetString() ?? "" : "";
-                                string hsStr = item.TryGetProperty("HIEUSUAT", out var hsProp) ? hsProp.GetString() ?? "" : "";
-
-                                if (!string.IsNullOrWhiteSpace(id) &&
-                                    double.TryParse(hsStr.Replace(',', '.'),
-                                        System.Globalization.NumberStyles.Any,
-                                        System.Globalization.CultureInfo.InvariantCulture, out double hsVal)
-                                    && hsVal > 0)
-                                {
-                                    efficiencyDict[id] = hsVal;
-                                }
-                            }
-                        }
-                    }
-
-                    // Đọc danh sách nhân viên
-                    if (employeeJsonPath != null)
-                    {
-                        var empRaw  = await File.ReadAllTextAsync(employeeJsonPath);
-                        var empRoot = JsonDocument.Parse(empRaw).RootElement;
-
-                        // Hỗ trợ Array hoặc { "NHANVIEN": [...] }
-                        JsonElement empArray = empRoot.ValueKind == JsonValueKind.Array
-                            ? empRoot
-                            : empRoot.TryGetProperty("NHANVIEN", out var inner) ? inner : default;
-
-                        if (empArray.ValueKind == JsonValueKind.Array)
-                        {
-                            foreach (var emp in empArray.EnumerateArray())
-                            {
-                                string status = emp.TryGetProperty("STATUS",      out var sp) ? sp.GetString() ?? "" : "";
-                                string group  = emp.TryGetProperty("GROUPBOPHAN", out var gp) ? gp.GetString()?.ToUpperInvariant() ?? "" : "";
-                                string level  = emp.TryGetProperty("LevelUser",   out var lp) ? lp.GetString()?.ToUpperInvariant() ?? "" : "";
-
-                                // Lọc điều kiện
-                                if (status != "1") continue;
-                                if (!AllowedGroups.Contains(group)) continue;
-                                if (ExcludedLevels.Contains(level)) continue;
-
-                                string wId   = emp.TryGetProperty("UserName", out var up) ? up.GetString() ?? "" : "";
-                                string wName = emp.TryGetProperty("Fullname",  out var fp) ? fp.GetString() ?? "" : "";
-                                if (string.IsNullOrWhiteSpace(wId)) continue;
-
-                                double hs = efficiencyDict.TryGetValue(wId, out double val) && val > 0 ? val : 20.0;
-
-                                workers.Add(new AssemblyWorker
-                                {
-                                    WorkerId  = wId,
-                                    FullName  = wName,
-                                    GroupName = group,
-                                    HieuSuat  = hs,
-                                    SkillMap  = _skillMatrix.GetWorkerSkills(wId)
-                                });
-                            }
-                        }
-                    }
-
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[AssemblyEmployeeService] Fallback JSON tải {workers.Count} công nhân.");
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[AssemblyEmployeeService] Lỗi đọc fallback JSON: {ex.Message}");
-                }
+                    WorkerId = id,
+                    FullName = GetString(row, "Fullname"),
+                    GroupName = group,
+                    HieuSuat = efficiency.TryGetValue(id, out var hs) && hs > 0 ? hs : 20.0,
+                    SkillMap = _skillMatrix.GetWorkerSkills(id)
+                });
             }
 
-            // Sắp xếp: nhóm → mã nhân viên
-            return workers
-                .OrderBy(w => w.GroupName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(w => w.WorkerId)
-                .ToList();
+            return result.OrderBy(w => w.GroupName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(w => w.WorkerId, StringComparer.OrdinalIgnoreCase).ToList();
         }
-
-        /// <summary>
-        /// Tìm file JSON ở các thư mục phổ biến trong dự án
-        /// </summary>
-        private static string? FindFile(string fileName)
+        catch (Exception ex)
         {
-            var candidates = new[]
-            {
-                Path.Combine("D:/JTEC-WEB/Documents", fileName),
-                Path.Combine(AppContext.BaseDirectory, fileName),
-                Path.Combine(AppContext.BaseDirectory, "data", fileName),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName),
-            };
-
-            foreach (var path in candidates)
-            {
-                if (File.Exists(path)) return path;
-            }
-            return null;
+            System.Diagnostics.Debug.WriteLine($"[AssemblyEmployeeService] JSON fallback failed: {ex.Message}");
+            return new();
         }
+    }
+
+    private static string? FindFile(string name)
+    {
+        var candidates = new[]
+        {
+            Path.Combine("D:/JTEC-WEB/Documents", name),
+            Path.Combine(AppContext.BaseDirectory, name),
+            Path.Combine(AppContext.BaseDirectory, "data", name)
+        };
+        return candidates.FirstOrDefault(File.Exists);
+    }
+
+    private static IEnumerable<JsonElement> GetArray(JsonElement root, string propertyName)
+    {
+        if (root.ValueKind == JsonValueKind.Array) return root.EnumerateArray().ToArray();
+        return root.ValueKind == JsonValueKind.Object &&
+               root.TryGetProperty(propertyName, out var value) &&
+               value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray().ToArray()
+            : Array.Empty<JsonElement>();
+    }
+
+    private static string GetString(JsonElement row, string property)
+    {
+        if (!row.TryGetProperty(property, out var value)) return string.Empty;
+        return value.ValueKind == JsonValueKind.String ? value.GetString() ?? string.Empty : value.ToString();
     }
 }
