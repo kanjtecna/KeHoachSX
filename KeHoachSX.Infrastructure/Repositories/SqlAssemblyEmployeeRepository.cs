@@ -1,7 +1,7 @@
 using Dapper;
-using Interfaces;
 using KeHoachSX.Infrastructure.Database;
 using Models;
+using Abstractions;
 
 namespace KeHoachSX.Infrastructure.Repositories;
 

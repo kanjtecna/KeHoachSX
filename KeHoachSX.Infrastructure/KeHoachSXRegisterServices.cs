@@ -6,6 +6,7 @@ using KeHoachSX.Infrastructure.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Services;
+using Abstractions;
 
 namespace KeHoachSX.Infrastructure;
 
