@@ -32,4 +32,23 @@ namespace Abstractions
     {
         Task<double?> GetStandardMinutesAsync(string productCode, CancellationToken cancellationToken = default);
     }
+
+    /// <summary>
+    /// Provides the identity of the operator for the current application session.
+    /// </summary>
+    public interface ICurrentOperatorProvider
+    {
+        Task<OperatorContext> GetCurrentAsync(CancellationToken cancellationToken = default);
+    }
+
+    /// <summary>
+    /// Retrieves persisted operator details when a database record is available.
+    /// </summary>
+    public interface IOperatorRepository
+    {
+        Task<OperatorContext?> GetAsync(
+            string employeeCode,
+            string machineName,
+            CancellationToken cancellationToken = default);
+    }
 }
