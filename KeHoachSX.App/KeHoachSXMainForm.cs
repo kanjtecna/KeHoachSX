@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Web.WebView2.Core;
 using KeHoachSX.Infrastructure;
 using KeHoachSX.UI;
+using Services;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -118,6 +119,9 @@ namespace KeHoachSX.App
             new SharedRegisterServices().RegisterServices(services, configuration);
             new KeHoachSXRegisterServices().RegisterServices(services, configuration);
 
+            services.AddSingleton<IPlatformService>(new DesktopPlatformService(this, blazorWebViewKeHoachSX));
+            services.AddSingleton<IWindowService>(new DesktopWindowService(this));
+
             services.AddScoped<KeHoachSX_View>();
             services.AddSingleton<Form>(this);
 
@@ -128,7 +132,7 @@ namespace KeHoachSX.App
             blazorWebViewKeHoachSX.RootComponents.Add<KeHoachSX.App.Views.App>("#app");
             blazorWebViewKeHoachSX.RootComponents.Add<HeadOutlet>("head::after");
 
-            var defaultRoute = configuration["AppConfig:DefaultHomeRoute"] ?? "keHoachSX";
+            var defaultRoute = configuration["AppConfig:DefaultHomeRoute"] ?? "kehoachsx";
             blazorWebViewKeHoachSX.StartPath = $"/?returnUrl={Uri.EscapeDataString(defaultRoute)}";
         }
 

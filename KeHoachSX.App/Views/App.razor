@@ -7,7 +7,7 @@
 </HeadContent>
 
 <Router AppAssembly="@typeof(App).Assembly"
-        AdditionalAssemblies="new[] { typeof(JtecShare.UI.Login.Login).Assembly, typeof(KeHoachSX.UI.Pages.KeHoachSXWorkspace).Assembly }">
+        AdditionalAssemblies="new[] { typeof(JtecShare.UI.Login.Login).Assembly, typeof(KeHoachSX.UI.KeHoachSX_View).Assembly }">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" />
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
