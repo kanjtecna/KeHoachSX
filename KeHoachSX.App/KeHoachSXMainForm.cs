@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Helpers;
 using JtecShare.Core.Interfaces;
 using JtecShare.Services;
@@ -121,6 +122,22 @@ namespace KeHoachSX.App
 
             services.AddSingleton<IPlatformService>(new DesktopPlatformService(this, blazorWebViewKeHoachSX));
             services.AddSingleton<IWindowService>(new DesktopWindowService(this));
+
+            // Bật logging chi tiết cho Blazor Hybrid
+            services.AddLogging(logging =>
+            {
+                logging.SetMinimumLevel(LogLevel.Trace);
+
+                logging.AddFilter(
+                    "Microsoft.AspNetCore.Components.WebView",
+                    LogLevel.Trace);
+
+                logging.AddFilter(
+                    "Microsoft.AspNetCore.Components",
+                    LogLevel.Trace);
+
+                logging.AddDebug();
+            });
 
             services.AddScoped<KeHoachSX_View>();
             services.AddSingleton<Form>(this);
