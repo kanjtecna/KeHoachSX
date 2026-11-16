@@ -1,7 +1,7 @@
 using KeHoachSX.Application.Contracts;
 using Models;
 
-namespace Interfaces
+namespace Abstractions
 {
     public interface IAssemblyEmployeeRepository
     {

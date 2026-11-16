@@ -1,8 +1,6 @@
 using Models.Login;
 using Microsoft.Extensions.Configuration;
-using KeHoachSX.Application.Abstractions.Persistence;
-using KeHoachSX.Application.Abstractions.Runtime;
-using KeHoachSX.Domain;
+using Abstractions;
 using KeHoachSX.Application.Contracts;
 using System;
 using System.Threading;

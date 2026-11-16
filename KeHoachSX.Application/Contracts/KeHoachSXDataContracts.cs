@@ -9,3 +9,5 @@ public sealed record AssemblyEmployeeRecord(
     string LevelUser,
     string Status,
     double Efficiency);
+
+public sealed record OperatorContext(string EmployeeCode, string EmployeeName, string MachineName);
