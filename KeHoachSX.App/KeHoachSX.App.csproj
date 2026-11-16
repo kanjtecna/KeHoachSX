@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+	<ApplicationIcon>favicon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.AspNetCore.Components.WebView.WindowsForms" Version="8.0.100" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\..\JtecShare\JtecShare.Core\JtecShare.Core.csproj" />
+		<ProjectReference Include="..\..\..\..\JtecShare\JtecShare.Services\JtecShare.Services.csproj" />
+		<ProjectReference Include="..\KeHoachSX.Domain\KeHoachSX.Domain.csproj" />
+		<ProjectReference Include="..\KeHoachSX.Application\KeHoachSX.Application.csproj" />
+		<ProjectReference Include="..\KeHoachSX.Infrastructure\KeHoachSX.Infrastructure.csproj" />
+		<ProjectReference Include="..\KeHoachSX.UI\KeHoachSX.UI.csproj" />
+	</ItemGroup>
+</Project>

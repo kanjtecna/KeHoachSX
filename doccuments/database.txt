@@ -1,0 +1,25 @@
+
+CREATE TABLE STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN (
+	[No] int IDENTITY(1,1) NOT NULL,
+	IDNHANVIEN nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	HIEUSUAT nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL
+);
+
+CREATE TABLE STOCKMANAGEMENT.dbo.NHANVIEN (
+	UserName nvarchar(12) COLLATE SQL_Latin1_General_CP1_CI_AS NOT NULL,
+	Password nvarchar(30) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	Fullname nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	Dept nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	LevelUser varchar(5) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	[GROUP] varchar(15) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	STATUS varchar(15) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	COMENT varchar(15) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	[No] int NULL,
+	JOIN_COMPANY_DATE date NULL,
+	DAY_OFF_WORK date NULL,
+	GROUPBOPHAN nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	BOPHAN nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	PHANQUYEN nvarchar(50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	BAC varchar(15) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+	Contract_signing_date date NULL
+);
