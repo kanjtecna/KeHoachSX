@@ -613,7 +613,7 @@ After automatic dispatch, the planner must be able to adjust the team and work a
 - Change team composition while preserving the product's remaining total workload and shipment quantity.
 - Recalculate affected employee/date capacities, each employee's standard-minute target and assigned standard minutes, actual clock duration, day timeline, product estimated completion and any overload/shortfall warnings after every accepted edit.
 - Revalidate hard constraints on every manual edit: employee/group eligibility, skill requirements, date availability/leave, holiday/overtime windows, actual clock capacity and physical jig concurrency. A manual operation must not bypass a hard constraint.
-- Mark owner-edited assignments as manual/pinned. A later Auto Dispatch run must preserve pinned assignments by default; provide an explicit reset/unpin action before intentionally discarding manual choices.
+- Mark owner-edited assignments as manual/pinned. Before a subsequent Auto Dispatch run, make the preserve-versus-reset behavior explicit to the user; never silently discard manual edits. Whether pinned edits are preserved by default or require an explicit preserve option remains to be confirmed.
 - Keep the assignment and manual-change history in the current in-memory plan in this phase; export the final adjusted result to Excel. Do not add production-database writes or claim durable storage.
 
 ### 12.6 Unexpected absence and remaining work
