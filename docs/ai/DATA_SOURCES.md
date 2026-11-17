@@ -194,7 +194,7 @@ Current source priority:
 3. If Oracle returns no valid value or throws, `StandardTimeService` tries `STOCKMANAGEMENT.dbo.SANLUONGCAMLR.GIOCONG` for the product, taking the most recent `[TIME]` row.
 4. If no positive value is found, the current service returns a default of 60.
 
-The code comments and property names treat this value as minutes, but the external JtecShare implementation is not in this repository. The exact business unit/basis (minutes per product unit, per Lot or other) remains unverified and must be confirmed before changing quantity multiplication or dispatch math.
+The code comments and property names treat this value as minutes. The owner's latest workload example explicitly defines the planning basis as minutes per one product unit: quantity 50 * 263.26 minutes/unit = 13,163 standard minutes. The external JtecShare implementation remains outside this repository, so verify representative returned values against production data; however, the scheduling calculation must multiply the per-unit standard time by product quantity exactly once.
 
 ### 13.3 Use in efficiency-based dispatch
 
