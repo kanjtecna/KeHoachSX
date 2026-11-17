@@ -534,3 +534,110 @@ The current `ShiftConfig` defaults to 07:30–17:00 with 80 minutes of breaks, w
 - A positive plan-level standard-minute value overrides standard-time lookup; otherwise Oracle -> SQL Server -> default priority is retained.
 - The 30% parser placeholder is not used as final employee-specific duration during dispatch.
 - Test 490 net normal minutes + 90 overtime minutes separately from the 480 + 90 example so shift-configuration changes cannot be hidden.
+
+## 12. Product continuity, weekly completion, high-workload priority and manual rebalancing
+
+[OWNER REQUIREMENT — NEW]
+
+### 12.1 Weekly shipment completion
+
+- The whole-week production plan is a shipment-bound workload: all imported product quantities are intended to be completed within the selected seven-day production week (Friday through Thursday).
+- For each product P, calculate its total standard workload as:
+
+```
+ProductStandardWorkMinutes(P)
+    = ProductQuantity(P) * StandardMinutesPerUnit(P)
+```
+
+- In the owner's example, product `YT13E01726P1-02` has quantity 50 and system standard time 263.26 minutes per unit:
+
+```
+50 * 263.26 = 13,163 standard minutes for the product
+13,163 / 7 = 1,880.43 standard minutes/day on average
+```
+
+- Use the positive `GioCongDinhMuc` from the plan when supplied; otherwise preserve the existing Oracle -> SQL Server -> default source priority. For this planning rule, the owner's example treats the retrieved system standard time as minutes for one product unit. Do not multiply quantity a second time after the parser has already expanded a quantity into unit tasks.
+- Daily demand is not required to be exactly one seventh on every date. Spread the product's work across actual employee/date capacity and operational constraints, while keeping the shipment-week completion deadline.
+- Calculate workload/capacity using decimal precision. The assigned quantities across all employees/dates must sum to the imported product quantity exactly; no units may be duplicated or lost.
+
+### 12.2 Estimate required staffing from each employee's actual efficiency
+
+For every eligible employee/date, use the target from section 11:
+
+```
+WorkerDateStandardCapacity
+    = AvailableClockMinutes * EmployeeEfficiencyPercent / 100
+
+WeeklyStandardCapacity(worker)
+    = SUM(WorkerDateStandardCapacity across the selected 7 dates)
+
+AvailableStandardCapacity(product/team)
+    = SUM(WeeklyStandardCapacity for all selected team members)
+```
+
+- Estimate required staffing from the total product standard workload divided by the actual per-person weekly standard capacity. Use the real employee roster, efficiency values, work calendar, overtime, leave and holidays; do not use a universal average when actual employee data is available.
+- The owner's rough example uses approximately 250 standard minutes per person per day. One person then provides approximately 1,750 standard minutes over seven fully available dates. The product requires `13,163 / 1,750 = 7.52`, hence at least 8 equally productive, fully available employees by this rough estimate.
+- If selected workers have lower efficiency or fewer available days, their summed capacity is lower; the required headcount may increase, for example to around 10 in the owner's estimate. Do not hardcode 8 or 10: calculate it from each person's actual availability and efficiency.
+- Higher-efficiency and lower-efficiency employees contribute according to their individual capacities. Do not first average all percentages and apply that average to every worker. Adding a worker increases capacity only by that worker's own eligible available minutes multiplied by their own efficiency.
+- The staffing estimate is a feasibility check, not a promise. If the available team's capacity is below the product workload, show the precise deficit and the additional capacity/headcount needed; do not silently mark the product as completable.
+- Headcount/team sizing must also respect physical jig availability and the T/J metadata. The existing T/J rules provide worker-count targets (T: one or two; J: two/three/four under the documented C thresholds), but the owner has now supplied examples that can require 8–10 people for a high-workload product. Before implementation, determine whether T/J counts are baseline targets that may be increased for weekly feasibility, or strict bounds requiring multiple teams. Never exceed physical concurrent jig-set count O. See KNOWN_GAPS.md.
+
+### 12.3 Stable product ownership and low changeover
+
+[OWNER REQUIREMENT — NEW]
+- Prefer to assign one stable employee/team to one product and keep that employee/team working on that product continuously across the required dates until its assigned quantity is complete.
+- Minimize frequent switching between product codes for the same worker/team. Avoid alternating small portions of many unrelated products when a contiguous product block is feasible.
+- For a product needing many workers, build the required crew/team(s) from the capacity estimate and keep their membership stable across dates whenever attendance permits.
+- If the product's workload requires more capacity than the current crew can supply before the weekly deadline, expand that crew or add a separate team where the physical jig-set limit and other constraints permit. Do not split work across extra teams merely for cosmetic load balancing.
+- A worker/team may change products after its assigned quantity is completed or when a genuine exception requires it (absence, capacity shortfall, urgent priority or an approved manual change).
+- Keep same-product work continuity as a strong optimization objective, not an absolute restriction that can make the weekly shipment impossible. Weekly feasibility, actual availability, skills and jig capacity remain hard constraints.
+
+### 12.4 Start high-workload products early and reserve recovery time
+
+[OWNER REQUIREMENT — NEW]
+- Calculate total standard workload per product (`quantity * standard minutes per unit`) and prioritize products with large total standard workload for earlier start and earlier planned completion.
+- Large-workload products must not be postponed to the final days merely because their individual Lots are being balanced with smaller products. The reason is to leave time for inspection, correction and rework if defects are discovered; rework on a large-workload product may consume substantial time.
+- When sequencing, prefer to start high-workload/long-lead products early, allocate enough stable capacity to finish their initial run early, and leave a visible recovery window before the shipment-week end.
+- Do not invent a fixed number of buffer days or a fixed rework percentage. The owner has not specified a numeric reserve yet. Represent the reserve explicitly in the plan/risks and allow it to be configured once approved.
+- High-workload priority is a scheduling preference. It must not override employee availability, T/J/jig constraints, skills/qualification or actual clock capacity.
+- When rework is reported, treat the rework quantity/time as additional tracked workload for the affected product, do not silently overwrite the original planned quantity, and prioritize it according to the remaining time to shipment. The actual rework data contract still needs implementation.
+
+### 12.5 Manual editing after automatic dispatch
+
+[OWNER REQUIREMENT — NEW]
+After automatic dispatch, the planner must be able to adjust the team and work assignments without having to discard and regenerate the entire plan:
+
+- Reassign an employee or an unstarted Lot/product allocation to another eligible employee.
+- Add one or more employees to an existing product team when the product is at risk of missing the weekly completion target.
+- Remove an employee from a product team, or replace an employee who becomes unexpectedly absent.
+- Change team composition while preserving the product's remaining total workload and shipment quantity.
+- Recalculate affected employee/date capacities, each employee's standard-minute target and assigned standard minutes, actual clock duration, day timeline, product estimated completion and any overload/shortfall warnings after every accepted edit.
+- Revalidate hard constraints on every manual edit: employee/group eligibility, skill requirements, date availability/leave, holiday/overtime windows, actual clock capacity and physical jig concurrency. A manual operation must not bypass a hard constraint.
+- Mark owner-edited assignments as manual/pinned. A later Auto Dispatch run must preserve pinned assignments by default; provide an explicit reset/unpin action before intentionally discarding manual choices.
+- Keep the assignment and manual-change history in the current in-memory plan in this phase; export the final adjusted result to Excel. Do not add production-database writes or claim durable storage.
+
+### 12.6 Unexpected absence and remaining work
+
+[OWNER REQUIREMENT — NEW]
+- If a worker becomes unavailable after dispatch, allow the planner to mark that employee unavailable for the affected date(s), then identify all future/unstarted work assigned to them.
+- Reallocate only the remaining incomplete quantity/workload to qualified available workers; preserve already completed production and do not duplicate the same unit.
+- Prefer the existing product team or replacement workers with relevant product experience to maintain continuity and reduce setup/changeover.
+- Recalculate whether the product can still finish before the weekly shipment deadline. If not, show the capacity deficit and request an operational decision rather than overbooking.
+- If a Lot is already partly in progress, only its remaining uncompleted quantity may be transferred. The current source model does not store actual completed quantity/progress, so progress capture must be designed before safe mid-Lot reassignment can be implemented.
+
+### 12.7 Required tests for product load, continuity and editing
+
+- Product total standard work equals quantity multiplied by standard minutes per unit; for `YT13E01726P1-02`, 50 * 263.26 = 13,163.
+- Seven-day average for the same product is 13,163 / 7 = 1,880.43 standard minutes/day; daily scheduling may vary with actual employee capacity.
+- With 250 standard minutes/person/day and seven fully available dates, 8 people provide 14,000 standard minutes, while 7 provide 12,250; the rough minimum is 8. Use actual individual capacities in production tests.
+- A lower-efficiency or partially available roster produces a larger required headcount when its summed capacity is lower; do not use an ungrounded fixed headcount.
+- The scheduler identifies a weekly capacity deficit before claiming the product can be completed.
+- Product assignment favors a stable team and minimizes product switching when the seven-day completion constraints remain feasible.
+- A high-total-standard-work product is started earlier and has a visible recovery window; no fixed buffer value is assumed until configured.
+- A product's quantity and standard workload are conserved when split among workers/teams. Assigning more team members must not multiply the product quantity or its total 13,163 standard-minute work pool.
+- Adding a worker changes team capacity by that worker's own per-date efficiency-adjusted availability.
+- Removing/replacing an absent worker redistributes only remaining incomplete work and preserves completed output.
+- A manual reassignment/add/remove operation updates all affected timelines, standard-minute balances, capacity checks and completion estimates.
+- Manual/pinned choices survive Auto Dispatch reruns unless the user explicitly resets them.
+- A manual edit cannot create duplicate unit assignments, lose work, exceed actual capacity or violate jig concurrency.
+- A partially completed Lot cannot be reassigned safely until completed quantity/progress is represented; test this boundary explicitly.
