@@ -196,7 +196,9 @@ The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_C
 - A leave row with `TRANGTHAI <> 7` excludes the matching employee for the entire covered date. Partial-day fields are ignored in this phase; SQL NULL does not satisfy the inequality.
 - For category T (L=T, N in 2 or 3, C>50), the scheduler may choose one or two workers according to capacity and allocation fit, without inventing another C threshold.
 - For category J (L=J, N>=2), N is only the rule condition, not a worker-count cap: C>=400 => 4 workers; C>=300 => 3; C>=200 => 2. C<200 remains undefined.
-- Column O counts physical jig sets and limits concurrent independent teams/work streams for a product. Multiple workers cooperating as one team share one set; O is not a worker cap.
+- Column O is the number of physical jig sets and therefore the maximum number of independent production teams that can work on that product simultaneously. Each team shares one jig set regardless of how many workers are in the team; O is not a worker cap.
+- [OWNER-CONFIRMED EXAMPLE] For `YT13E01726P1-02`, O=3 permits three concurrent production teams. If each team has three workers, 3 × 3 = 9 workers can work at the same time using three jig sets and producing up to three product units simultaneously (one per team/jig, subject to the actual process). These are production teams, not LR1/LR2/LR3/LR4 departments.
+- Determine workers per team from the applicable T/J rule and workload feasibility; determine concurrent team count from O. Use parallel teams to meet the seven-day workload rather than treating O as total headcount.
 - Do not implement plan persistence in this phase. Keep assignment state in memory and provide Excel export after dispatch; use the corrected eight-column target result as the baseline export contract. Preserve `Số người làm` and `số thứ tự nhóm`; their exact grouping relation needs a separate rule, not automatic correction.
 - Re-importing the same group and same date/week replaces only that exact scope; never append quantities.
 - Keep product work in one group by default. When necessary, allow at most two groups for one product, preserve each department's normalized contribution computed from `Số lượng / Số người làm`, and make cross-group use an exception.
@@ -249,7 +251,7 @@ This is an owner-approved target rule, **not yet implemented end-to-end**. See s
 - Estimate required headcount from actual employee-specific capacities. The owner's rough estimate is 250 standard minutes per employee/day; across seven full dates this gives 1,750 per employee/week. 13,163 / 1,750 = 7.52, so at least 8 equally productive, fully available employees are required by that estimate. Lower-efficiency workers or fewer available days can increase the required headcount (approximately 10 in the owner's example).
 - Do not hardcode an average efficiency or a fixed headcount of 8/10. Use each person's actual efficiency, breaks, overtime, holidays and leave.
 - If the team's combined weekly standard capacity is insufficient, show the shortfall/additional capacity needed instead of claiming completion.
-- The T/J worker-count targets and the possibility of an 8–10 person high-workload crew must be reconciled with the actual jig-set count O. Do not exceed O concurrent independent teams.
+- T/J worker-count rules apply to each production team; O determines how many teams can run simultaneously. For example, O=3 with three workers per team permits three teams/nine workers concurrently. The exact team size must still follow the applicable T/J metadata and capacity feasibility. Never exceed O concurrent teams.
 
 ### Continuity, product priority and rework risk
 
