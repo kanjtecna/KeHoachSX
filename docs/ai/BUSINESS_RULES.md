@@ -176,3 +176,17 @@ Recommended invariant candidates:
 - Total input quantity equals total output quantity after normalization, with rejected rows separately reported.
 
 These invariants are targets to be approved; do not impose them if they conflict with the owner's operational policy.
+
+
+## 12. Date-, group-, attendance- and jig-aware scheduling
+
+The owner has supplied a new target rule set covering:
+- Today/Tomorrow/Whole-week selection and Friday–Thursday seven-day production week.
+- Group-specific plan imports.
+- Company holidays and per-employee overtime.
+- Leave exclusion using `thutuchanhchinh`.
+- Product worker-count rules based on columns B/C/L/N and physical jig-set concurrency based on column O in `dulieubanga.xlsx`.
+
+The complete source-derived requirements, exact thresholds, hard-constraint order and unresolved decisions are maintained in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. That document is authoritative for this feature scope.
+
+Do not merge these target rules into descriptions of the current AutoDispatch behavior. Current `AutoDispatchService` is still a six-day, in-memory algorithm and does not yet apply holiday, overtime, leave or jig-resource constraints.
