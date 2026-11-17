@@ -130,19 +130,33 @@ Relevant fields supplied:
 
 For each calendar date covered inclusively by `STARTDATE`–`ENDDATE`, exclude the matching employee for the **whole date** when `TRANGTHAI <> N'7'`. Ignore partial-day/time fields (`STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI`) in this phase. Under normal SQL NULL semantics, NULL status does not satisfy `<>` and is excluded from the result; do not add NULL rows unless the owner changes the rule. Use read-only queries only.
 
-## 10. Group plan import and expected result examples [OWNER-SUPPLIED WORKBOOKS]
+## 10. Latest consolidated result workbook — quantity semantics [OWNER-SUPPLIED]
 
-The original LR1–LR4 input files have no header row and use A=product code, B=raw group/work-cell label and C=total quantity required from that source group for the product. The four original files contain 49 product/group rows, 43 unique products and total source quantity 542.
+The latest reference file `file_ketqua_phanchia(2).xlsx` has six sheets:
+- `kết quả`: 101 employee rows, 78 distinct employees, 43 products.
+- `số lượng mã sản phẩm cần làm`: normalized total for each product.
+- `LR1`, `LR2`, `LR3`, `LR4`: normalized quantity attributed to each employee department.
 
-The corrected result workbook contains the headers `UserName`, `FullName`, `Nhóm`, `Status`, `Mã sản phẩm`, `Số lượng`, `Số người làm`, `số thứ tự nhóm`. There are 101 employee allocation rows and 78 unique employees.
+The result columns include `Số lượng` and `Số người làm`. Use the verified row contribution:
+`Số lượng / Số người làm`.
 
-**Quantity rule:** result `Số lượng` is the individual employee's allocation. Sum it by product + employee department to recover the original quantity in input column C for that product/source group. This reconciles exactly across all 49 combinations and all 542 units. Individual employee allocations may differ; do not copy the full group total to every employee and do not multiply each row by `Số người làm`.
+- Product total = sum of row contributions for that product across all employees.
+- Department/product total = sum of row contributions for that product only from employees whose `Nhóm` equals the department.
+- Department total = sum of that department's product contributions.
+- The product summary and the four department sheets must reconcile to one another within a small numeric tolerance.
 
-The corrected workbook's product summary and embedded LR1–LR4 sheets are derived normalized metrics that numerically match `SUM(Số lượng / Số người làm)` at product or product+department level. Their aggregate is approximately 317, not the original production total 542. Keep them distinct from raw plan quantity.
+Latest workbook totals:
+- Product summary: 43 products, total 317.
+- LR1: 7 products, total 42.833333.
+- LR2: 13 products, total 101.25.
+- LR3: 19 products, total 101.
+- LR4: 10 products, total 71.916667.
+- The four department sheets sum to 317 within floating-point tolerance.
+- The raw sum of `Số lượng` across 101 employee rows is 542, but this is the numerator before dividing by `Số người làm`; it is not the normalized work total.
 
-The latest corrected workbook changes `Số người làm` for product `PA13E01064P1-01` from 2 to 1. Do not restore the previous value.
+Six product codes have fractional allocations across two departments. These are intentional headcount-based attributions. Do not round intermediate values to integers, multiply the ratio by headcount again, or force the remainder into one department. Invalid or non-positive `Số người làm` must be flagged; do not divide by zero.
 
-Six product codes are shared across two departments in the sample. LR4.xlsx column B contains LR4–LR13 labels; their exact meaning still needs mapping confirmation. Do not include employee names/IDs from sample files in repository documentation or test fixtures.
+The prior standalone LR1–LR4 input files and earlier result workbook are superseded by this latest consolidated workbook for this sample. The six sheets contain stored values rather than live formulas, so editing `kết quả` requires regenerating the derived product and department summaries. Do not copy employee names/IDs from the workbook into repository docs or tests.
 
 ## 11. Jig/fixture input — `dulieubanga.xlsx`
 
