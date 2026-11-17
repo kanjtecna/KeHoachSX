@@ -72,8 +72,9 @@ Mỗi nhiệm vụ liên quan những nội dung trên phải khảo sát và x�
 - Default view Today, with Today/Tomorrow/Whole-week scopes.
 - A production week is Friday through the following Thursday, seven dates.
 - Users import product plans independently per assembly group.
-- In a source group plan, column C is the total required quantity for a product. In the result, `Số lượng` is the individual employee allocation; summing it by product and employee department must exactly recover the source total. Individual allocations may differ.
-- Keep the separate normalized summary `SUM(Số lượng / Số người làm)` distinct from raw production quantity.
+- In the latest consolidated result, one row contributes `Số lượng / Số người làm` to the product total and to the department of that employee. Sum these normalized contributions; the LR1–LR4 sheets contain fractional department attributions for shared products.
+- The latest product summary total is 317; the raw sum of `Số lượng` over employee rows is 542 and must not be treated as the normalized production total.
+- The normalized product summary and four department summaries reconcile to one another. Preserve fractional values and calculate with sufficient precision.
 - Prefer one employee department per product, but controlled sharing with a second department is allowed when needed; preserve each source group's quantity.
 - Working availability is date-specific and includes company holidays, employee overtime and approved leave.
 - On normal days, valid overtime extends the regular work timeline; on holidays, only employees with valid overtime may work and only for their registered overtime hours.
