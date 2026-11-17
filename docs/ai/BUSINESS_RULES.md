@@ -231,3 +231,40 @@ Keep the measures separate:
 The example assumes eight hours are net usable normal work minutes after breaks. The currently observed `ShiftConfig` default yields 490 net minutes (07:30–17:00 less 80 minutes of breaks), so the date-specific capacity must come from the real shift/attendance configuration; do not hardcode the example's 570 minutes.
 
 This is an owner-approved target rule, **not yet implemented end-to-end**. See sections 11 and 11.4–11.6 of `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for code evidence, source priority, unit cautions and required tests.
+
+## 14. Weekly output, stable crews and editable dispatch [OWNER REQUIREMENT — NEW]
+
+### Product workload and shipment deadline
+
+- Every product in a Whole week plan is expected to finish within the selected seven-day production week (Friday–Thursday) for shipment.
+- `ProductStandardWorkMinutes = ProductQuantity * StandardMinutesPerUnit`.
+- For `YT13E01726P1-02`: quantity 50 * system standard 263.26 minutes/unit = 13,163 standard minutes. Its seven-day average is 1,880.43 standard minutes/day; actual daily distribution follows employee/date capacity and does not need to be equal on all seven dates.
+- Treat the system standard time supplied in this example as minutes per one product unit. Do not multiply it twice when the parser has already expanded quantity into individual unit tasks.
+- The assigned quantity and total standard workload for a product are conserved across all employees/teams. Adding workers must not duplicate the same product units or multiply the total work pool.
+
+### Staffing feasibility and efficiency mix
+
+- Per employee/date capacity in system standard minutes is `AvailableClockMinutes * HieuSuat / 100`.
+- Team/product capacity is the sum of the participating employees' individual capacities across the actual available dates.
+- Estimate required headcount from actual employee-specific capacities. The owner's rough estimate is 250 standard minutes per employee/day; across seven full dates this gives 1,750 per employee/week. 13,163 / 1,750 = 7.52, so at least 8 equally productive, fully available employees are required by that estimate. Lower-efficiency workers or fewer available days can increase the required headcount (approximately 10 in the owner's example).
+- Do not hardcode an average efficiency or a fixed headcount of 8/10. Use each person's actual efficiency, breaks, overtime, holidays and leave.
+- If the team's combined weekly standard capacity is insufficient, show the shortfall/additional capacity needed instead of claiming completion.
+- The T/J worker-count targets and the possibility of an 8–10 person high-workload crew must be reconciled with the actual jig-set count O. Do not exceed O concurrent independent teams.
+
+### Continuity, product priority and rework risk
+
+- Prefer a stable employee/team dedicated to one product continuously until its assigned work is complete; minimize frequent product-code switching and setup/changeover.
+- Large products are prioritized by total standard workload (`quantity * standard minutes/unit`) for early start and early planned completion, leaving time to inspect, correct defects and rework before shipment.
+- Do not invent a fixed rework buffer. The amount/days must be configurable after the owner defines it.
+- Continuity is a strong preference, not a hard rule that may prevent completion of the weekly shipment plan.
+
+### Post-dispatch manual adjustment
+
+- After Auto Dispatch, the user must be able to reassign workers/Lots, add or remove one or more members from a product team, and replace an unexpectedly absent employee.
+- Every change must recalculate employee/date loads, standard-minute targets, actual clock time, timeline, product completion estimate and warnings.
+- Only remaining incomplete work may be redistributed after an absence; completed output must not be duplicated or reassigned.
+- Mark manual assignments as pinned so later Auto Dispatch reruns do not overwrite them unless the user explicitly resets/unpins them.
+- Keep manual changes in the in-memory result and Excel export in the current phase; do not write assignments to production DB.
+
+[CURRENT CODE GAP]
+Current `LotTask` stores one `AssignedWorkerId`, not a multi-member crew or per-worker quantity share. The current UI modal can transfer one Lot from one worker to another but cannot add/remove multiple team members. The model also does not record completed quantity/progress for safe partial-Lot reassignment. These are future implementation requirements, not current features.
