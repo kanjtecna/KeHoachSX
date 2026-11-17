@@ -266,8 +266,8 @@ apply the worker-count target derived from C:
 ## 7. Combined dispatch constraints and evaluation order
 
 The future scheduler must evaluate a task against all of these dimensions:
-1. Product belongs to the selected plan scope (date/week) and selected group.
-2. Worker is active and eligible for the selected group.
+1. Product belongs to the selected plan scope and retains its originating group demand. If the same product appears in two group plans, preserve both source allocations separately.
+2. Workers are active and eligible in their actual employee departments. A shared product team may include workers from a second department only under the controlled cross-group rule in section 1.4.
 3. Worker is not on a qualifying whole-day leave on that date.
 4. Worker has positive availability on that date (normal shift and/or overtime record selected under the initial no-status-filter rule).
 5. If the date is a company holiday, the worker has a matching overtime record for that date and receives only the 08:00 + SOGIO window.
@@ -276,6 +276,7 @@ The future scheduler must evaluate a task against all of these dimensions:
 8. Skill, efficiency and workload ranking selects among eligible workers only; ranking must never override any hard constraint.
 9. The task must be represented on the correct dated timeline, including normal breaks and overtime boundaries.
 10. All imported product quantities must be accounted for; overload, missing metadata and unassigned work must remain visible.
+11. Prefer one employee department per product. When sharing is necessary, use no more than two departments per product by default, record the cross-group decision, and reconcile output quantity separately against each source group.
 11. Prefer keeping product work inside one group; permit a second group only as a controlled exception, with at most two groups per product by default.
 12. If the total plan exceeds available capacity, keep the excess work unassigned and show a clear warning. Never drop it or force an over-capacity assignment silently.
 
