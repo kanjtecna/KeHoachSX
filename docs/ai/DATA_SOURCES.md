@@ -132,15 +132,17 @@ For each calendar date covered inclusively by `STARTDATE`–`ENDDATE`, exclude t
 
 ## 10. Group plan import and expected result examples [OWNER-SUPPLIED WORKBOOKS]
 
-Inspected workbook structure:
-- Group input workbooks have no header row and use three columns: A = product code, B = group/work-cell label, C = requested quantity.
-- Re-importing the same group and same date/week scope replaces that exact group/scope; do not append.
-- LR1/LR2/LR3 column B contains the corresponding LR1/LR2/LR3 label. LR4.xlsx contains LR4 through LR13 labels in column B, so these labels must be clarified before being treated as employee departments.
-- The target assignment workbook columns are `UserName`, `FullName`, `Nhóm`, `Status`, `Mã sản phẩm`, `Số lượng`, `Số người làm`, `số thứ tự nhóm`.
-- Reconciliation: 43 unique products and 542 total quantity; output employee-group quantities match the input product/group quantities. Six products are planned across two groups.
-- Six team-sequence entries have a mismatch between employee row count and `Số người làm`; see `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
+The original LR1–LR4 input files have no header row and use A=product code, B=raw group/work-cell label and C=total quantity required from that source group for the product. The four original files contain 49 product/group rows, 43 unique products and total source quantity 542.
 
-Do not include employee personal data from the example workbooks in repository docs, prompts or test fixtures. Prefer anonymized IDs and names in automated tests.
+The corrected result workbook contains the headers `UserName`, `FullName`, `Nhóm`, `Status`, `Mã sản phẩm`, `Số lượng`, `Số người làm`, `số thứ tự nhóm`. There are 101 employee allocation rows and 78 unique employees.
+
+**Quantity rule:** result `Số lượng` is the individual employee's allocation. Sum it by product + employee department to recover the original quantity in input column C for that product/source group. This reconciles exactly across all 49 combinations and all 542 units. Individual employee allocations may differ; do not copy the full group total to every employee and do not multiply each row by `Số người làm`.
+
+The corrected workbook's product summary and embedded LR1–LR4 sheets are derived normalized metrics that numerically match `SUM(Số lượng / Số người làm)` at product or product+department level. Their aggregate is approximately 317, not the original production total 542. Keep them distinct from raw plan quantity.
+
+The latest corrected workbook changes `Số người làm` for product `PA13E01064P1-01` from 2 to 1. Do not restore the previous value.
+
+Six product codes are shared across two departments in the sample. LR4.xlsx column B contains LR4–LR13 labels; their exact meaning still needs mapping confirmation. Do not include employee names/IDs from sample files in repository documentation or test fixtures.
 
 ## 11. Jig/fixture input — `dulieubanga.xlsx`
 
