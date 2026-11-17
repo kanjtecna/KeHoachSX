@@ -177,3 +177,31 @@ Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metada
 - The in-memory assignment result can be exported to an Excel workbook after dispatch is complete.
 - Excel export is a file output only; it must not write plan data to the production database.
 - The exact workbook layout/columns and treatment of unassigned or overloaded work remain to be specified before export implementation.
+
+## 13. Employee efficiency and system standard time [CODE-VERIFIED + OWNER TARGET]
+
+### 13.1 Employee efficiency — `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN`
+
+Current SQL source is joined by `HIEUSUATNHANVIEN.IDNHANVIEN = NHANVIEN.UserName` (trimmed). The repository query takes the latest row using `TOP (1) ... ORDER BY h.[No] DESC` and reads `HIEUSUAT` as a positive numeric percentage. For example, a stored value of `45` means 45%, not 0.45. Missing, invalid or non-positive SQL values currently fall back to 20%.
+
+The offline JSON source reads `HIEUSUATNHANVIEN.json`, maps `IDNHANVIEN` to `HIEUSUAT`, and also defaults to 20% when no positive value is found. Unlike the SQL query, the current JSON implementation does not explicitly sort by `No`; its result for duplicate employee rows depends on file order. Ensure the exported JSON snapshot is deterministic before relying on it as an equivalent latest-record source.
+
+### 13.2 System standard time — Oracle and SQL Server
+
+Current source priority:
+1. A positive `GioCongDinhMuc` value present in the uploaded plan takes precedence.
+2. Otherwise, `OracleStandardTimeProvider` calls the external JtecShare service `ILayGioCongHeThong.LayGioCongHeThongAsync(productCode, "1523")`, reads `GioCongHT` and parses a positive numeric value.
+3. If Oracle returns no valid value or throws, `StandardTimeService` tries `STOCKMANAGEMENT.dbo.SANLUONGCAMLR.GIOCONG` for the product, taking the most recent `[TIME]` row.
+4. If no positive value is found, the current service returns a default of 60.
+
+The code comments and property names treat this value as minutes, but the external JtecShare implementation is not in this repository. The exact business unit/basis (minutes per product unit, per Lot or other) remains unverified and must be confirmed before changing quantity multiplication or dispatch math.
+
+### 13.3 Use in efficiency-based dispatch
+
+For each employee/date, calculate:
+`DailyTargetStandardMinutes = DailyAvailableClockMinutes * HIEUSUAT / 100`.
+
+For each assigned Lot:
+`TaskActualClockMinutes = TaskSystemStandardMinutes / (HIEUSUAT / 100)`.
+
+Track standard minutes and actual clock minutes separately. The target is an allocation objective; hard availability is still enforced in actual clock time. A missing/non-positive efficiency currently uses the 20% fallback and must be surfaced as a warning in the new scheduler. Do not confuse standard minutes with clock minutes or apply the efficiency percentage twice.
