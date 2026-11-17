@@ -177,14 +177,18 @@ Before changing any calendar, import, dispatch, overtime, leave, holiday or jig 
 The owner-defined target behavior is:
 - Default application scope is the local current date (Today); the user can choose Tomorrow or Whole week.
 - Production week is seven consecutive dates, Friday through the following Thursday. Never use the old Monday–Saturday six-day model for the new production calendar.
-- Plan data is partitioned by both group and date/week. Importing one group or one day must not overwrite other groups/dates.
+- A Whole week import is one weekly demand-pool file for the explicitly selected/identified group; distribute its product/Lot work across all seven dates using employee/date capacity. Do not require date assignment in each weekly row.
+- Plan data is partitioned by group and date/week. Importing one group or one day must not overwrite other groups/dates.
 - Eligible employees for a group are restricted to that group (current codes LR1–LR4) unless cross-group assignment is explicitly approved.
 - Worker availability is evaluated per employee per date, not as one uniform weekly capacity.
-- On normal working dates, approved employee-specific overtime adds SOGIO hours to normal capacity and must extend the timeline.
-- On a company holiday, only employees with valid approved overtime for that date may work; their capacity is SOGIO hours only, not a normal shift plus overtime.
-- Leave rows from `STOCKMANAGEMENT.dbo.thutuchanhchinh` where `TRANGTHAI <> 7` and the employee/date interval matches make the employee unavailable for the affected date, subject to the unresolved NULL/partial-day policies in the scheduling document.
-- Jig/fixture capacity is a hard resource constraint. Column O counts physical jig sets and limits simultaneous groups using a product; it is not automatically a worker headcount.
-- T/J and C/N worker-count rules must follow the exact supplied thresholds in the scheduling document. Do not invent missing thresholds or fallback values.
-- Ranking scores (skill, workload, continuity) may rank only workers who already satisfy hard constraints. They must never override group eligibility, leave, holiday authorization, hours or jig capacity.
+- On normal dates, use overtime records without a new status/approval filter in the first phase; overtime starts at 17:00 and adds SOGIO hours to normal capacity.
+- On a company holiday, only employees with a matching overtime record may work; overtime starts at 08:00 and SOGIO hours are the entire available capacity (no normal shift). Do not filter STATUS/QUANLYDUYET/GADUYET until the owner defines that rule.
+- Each `TA.dbo.nghile.date` is one non-recurring holiday date.
+- A leave row from `STOCKMANAGEMENT.dbo.thutuchanhchinh` with `TRANGTHAI <> 7` excludes the matching employee for the whole covered date. Ignore partial-day fields in the first phase; SQL NULL does not satisfy the inequality.
+- Jig column O counts physical sets and limits simultaneously active independent teams/work streams. Multiple employees cooperating in one team share one jig set; O does not cap team size.
+- For T: L=T, N in {2,3}, C>50 permits one or two workers; the scheduler chooses based on capacity/fit without inventing another threshold.
+- For J: L=J and N>=2 enables the rule; N is not a headcount cap. C>=400 => 4, C>=300 => 3, C>=200 => 2; C<200 has no defined J-specific rule.
+- Do not add plan persistence in the first phase. Export the completed in-memory assignment result to Excel; export layout requires specification.
+- Ranking scores (skill, workload, continuity) may rank only workers who already satisfy hard constraints. They must never override group eligibility, leave, holiday access, hours or jig capacity.
 
-Current repository code does not yet implement the complete dated calendar, group-specific import, holiday/overtime, leave or jig-resource model. Do not describe these target rules as implemented until code and tests prove them. Unresolved items are listed in `docs/ai/KNOWN_GAPS.md`; stop and ask the owner before making behavior-changing assumptions.
+Current repository code does not yet implement the complete dated calendar, weekly-pool distribution, group-specific import, holiday/overtime, leave or jig-resource model, nor the new Excel export. Do not describe these target rules as implemented until code and tests prove them. Remaining decisions are listed in `docs/ai/KNOWN_GAPS.md`; stop and ask the owner before making behavior-changing assumptions.
