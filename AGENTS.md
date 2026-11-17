@@ -179,9 +179,11 @@ The owner-defined target behavior is:
 - Production week is seven consecutive dates, Friday through the following Thursday. Never use the old Monday–Saturday six-day model for the new production calendar.
 - A Whole week import is one weekly demand-pool file for the explicitly selected/identified group; distribute its product/Lot work across all seven dates using employee/date capacity. Do not require date assignment in each weekly row.
 - Plan data is partitioned by group and date/week. Re-importing the same group and exact date/week replaces that scope; it does not append. Other groups/dates remain untouched.
-- Input plan column C is the total quantity required for product + source group. Output `Số lượng` is the quantity assigned to one employee. Sum employee rows by product + employee department and reconcile exactly to source C; individual allocations may differ. Never copy the whole group total to every employee or multiply output quantity by `Số người làm`.
-- Keep raw production quantity separate from the derived normalized metric `SUM(Số lượng / Số người làm)`; do not substitute one for the other.
-- Read the production group from the specified import-file column and validate it. The supplied LR4 workbook has LR4-LR13 values in its second column; do not map these labels to LR4 without owner confirmation.
+- In the latest consolidated result workbook, each employee row contributes `Số lượng / Số người làm`. Sum these row contributions by product for the product total and by product + employee `Nhóm` for LR1–LR4 department attribution.
+- Do not sum raw `Số lượng` across employee rows as independent production output: in the latest workbook the raw sum is 542, but the normalized total is 317.
+- Fractional department contributions are intentional when employees from two departments share a product. Preserve precision and do not round each row/group contribution before aggregation.
+- If `Số người làm` is blank, zero, negative or invalid, flag the row and do not divide by it.
+- Preserve `Số người làm` and `số thứ tự nhóm`. Do not assume product + sequence alone reconstructs a unique team or overwrite headcount based only on row counts.
 - Eligible employees normally come from the plan's group. Keep product work in one group by default; permit a second group only when necessary, preserve each group's source quantity, and use no more than two groups per product unless explicitly approved.
 - Worker availability is evaluated per employee per date, not as one uniform weekly capacity.
 - On normal dates, use overtime records without a new status/approval filter in the first phase; overtime starts at 17:00 and adds SOGIO hours to normal capacity.
