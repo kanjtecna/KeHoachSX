@@ -515,6 +515,8 @@ This example assumes the stated eight normal hours are **net usable work minutes
 The current dispatch algorithm does not explicitly calculate or optimize `DailyTargetStandardMinutes` per employee/date. Its workload score and capacity tracking use `ThoiGianThucTe` (clock duration); it does not separately track the sum of system standard minutes against each person's efficiency target. The current six-day `ShiftConfig` also does not yet represent the full date-specific overtime/holiday model. Do not claim this new target is implemented until the model, dispatch algorithm and tests cover both time measures.
 
 ### 11.5 Unit and availability caution
+For a Lot that belongs to a multi-worker team, the source does not yet define whether its system standard minutes are credited once to the team and then apportioned among its members, or credited in full to each member. Do not multiply the same Lot's standard minutes by team size or divide them equally without an owner-approved rule. The current `LotTask` model has a singular `AssignedWorkerId`; team-aware per-person target accounting requires an explicit team/allocation model.
+
 
 The adapter's method/property names and model comments imply that `GioCongHT` is a standard-minute value, but the external JtecShare implementation is outside this repository and its exact unit (per product unit, per Lot, or another basis) has not been independently verified. Confirm that unit before using these values in production allocation. Do not multiply by plan quantity again if the parser has already expanded that quantity into separate Lot tasks.
 
