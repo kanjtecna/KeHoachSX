@@ -64,13 +64,13 @@ See:
 
 Important currently observed behavior:
 - Eligible assembly groups are LR1, LR2, LR3 and LR4.
-- Employee status must be `1`; CHIEF, LEADE, LEADER and SUBLEADER are excluded.
+- Employee status must be `1`; CHIEF, LEADE and LEADER are excluded.
 - Missing/non-positive employee efficiency is treated as 20% by the current employee-loading/dispatch logic.
 - Standard-time lookup priority is uploaded plan value, then Oracle, then SQL Server, then 60 minutes.
-- Current shift defaults: 07:00–19:00, six days (Monday–Saturday); breaks 10:00–10:05, 12:00–13:00 and 15:00–15:05.
+- Current shift defaults: 07:30–17:00, six days (Monday–Saturday); breaks 10:00–10:10, 12:00–13:00 and 15:00–15:10.
 - Current parser expands quantity into unit LotTask records.
 - Current parser sets initial planned work duration to standardMinutes / 0.3; dispatch recalculates it using worker efficiency.
-- Current auto-dispatch score uses 50% skill, 35% remaining weekly capacity and 15% same-product continuity bonus.
+- Current auto-dispatch candidate ranking combines three weighted components: skill score × 0.50, remaining-weekly-capacity score × 0.35, and same-product continuity bonus × 0.15. The continuity bonus value is currently 0.35 when the worker's last assigned product matches; its maximum contribution to the total score is therefore 0.35 × 0.15 = 0.0525. This is a ranking preference, not a hard assignment rule. See `docs/ai/BUSINESS_RULES.md`.
 These are observations of the current code, not a claim that all desired business rules are implemented.
 
 ## 5. Non-negotiable engineering rules
@@ -168,3 +168,59 @@ Every coding task report must include:
 7. **Kết luận** — done / partial / blocked.
 
 Never say “optimized”, “fixed”, “secure” or “fully tested” without evidence.
+
+
+## 11. Mandatory rules for dated/group scheduling
+
+Before changing any calendar, import, dispatch, overtime, leave, holiday or jig logic, read `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
+
+The owner-defined target behavior is:
+- Default application scope is the local current date (Today); the user can choose Tomorrow or Whole week.
+- Production week is seven consecutive dates, Friday through the following Thursday. Never use the old Monday–Saturday six-day model for the new production calendar.
+- A Whole week import is one weekly demand-pool file for the explicitly selected/identified group; distribute its product/Lot work across all seven dates using employee/date capacity. Do not require date assignment in each weekly row.
+- Plan data is partitioned by group and date/week. Re-importing the same group and exact date/week replaces that scope; it does not append. Other groups/dates remain untouched.
+- In the latest consolidated result workbook, each employee row contributes `Số lượng / Số người làm`. Sum these row contributions by product for the product total and by product + employee `Nhóm` for LR1–LR4 department attribution.
+- Do not sum raw `Số lượng` across employee rows as independent production output: in the latest workbook the raw sum is 542, but the normalized total is 317.
+- Fractional department contributions are intentional when employees from two departments share a product. Preserve precision and do not round each row/group contribution before aggregation.
+- If `Số người làm` is blank, zero, negative or invalid, flag the row and do not divide by it.
+- Preserve `Số người làm` and `số thứ tự nhóm`. Do not assume product + sequence alone reconstructs a unique team or overwrite headcount based only on row counts.
+- Eligible employees normally come from the plan's group. Keep product work in one group by default; permit a second group only when necessary, preserve each department's normalized contribution computed from `Số lượng / Số người làm`, and use no more than two groups per product unless explicitly approved.
+- Worker availability is evaluated per employee per date, not as one uniform weekly capacity.
+- On normal dates, use overtime records without a new status/approval filter in the first phase; overtime starts at 17:00 and adds SOGIO hours to normal capacity.
+- On a company holiday, only employees with a matching overtime record may work; overtime starts at 08:00 and SOGIO hours are the entire available capacity (no normal shift). Do not filter STATUS/QUANLYDUYET/GADUYET in the initial phase.
+- `Overtime.ID` always matches `NHANVIEN.UserName`. Deduplicate by ID + date and never sum duplicates; flag conflicting SOGIO values until a tie-breaker is approved.
+- Each `TA.dbo.nghile.date` is one non-recurring holiday date.
+- A leave row from `STOCKMANAGEMENT.dbo.thutuchanhchinh` with `TRANGTHAI <> 7` excludes the matching employee for the whole covered date. Ignore partial-day fields in the first phase; SQL NULL does not satisfy the inequality.
+- Jig column O counts physical sets and limits simultaneously active independent teams/work streams. Multiple employees cooperating in one team share one jig set; O does not cap team size. If jig metadata is missing, skip that product's jig check but show a warning; do not drop the product.
+- For T: L=T, N in {2,3}, C>50 permits one or two workers; the scheduler chooses based on capacity/fit without inventing another threshold.
+- For J: L=J and N>=2 enables the rule; N is not a headcount cap. C>=400 => 4, C>=300 => 3, C>=200 => 2; C<200 has no defined J-specific rule.
+- Do not add plan persistence in the first phase. Export the completed in-memory assignment result to Excel, using the supplied target result columns as the starting format.
+- If seven-day capacity is insufficient, leave remaining work unassigned and show a warning; never force assignments beyond capacity silently.
+- Ranking scores (skill, workload, continuity) may rank only workers who already satisfy hard constraints. They must never override group eligibility, leave, holiday access, hours or jig capacity.
+
+Current repository code does not yet implement the complete dated calendar, weekly-pool distribution, group-specific import, holiday/overtime, leave or jig-resource model, nor the new Excel export. Do not describe these target rules as implemented until code and tests prove them. Remaining decisions are listed in `docs/ai/KNOWN_GAPS.md`; stop and ask the owner before making behavior-changing assumptions.
+
+### Efficiency-based daily standard-work target
+
+- Read employee efficiency from `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN`; the current SQL query selects the row with greatest `No` for each employee. A stored value such as `45` is 45 percent.
+- For each employee/date, calculate `DailyTargetStandardMinutes = DailyAvailableClockMinutes * EfficiencyPercent / 100`.
+- For each Lot, calculate actual timeline occupancy as `TaskSystemStandardMinutes / (EfficiencyPercent / 100)`. Keep this separate from the system standard-minute credit.
+- Schedule toward the per-person/per-date standard-minute target while never exceeding actual available clock minutes. Do not exceed capacity or split an indivisible Lot without an owner-approved rule.
+- Preserve the current 20% fallback only as an explicit fallback with a warning. Do not describe fallback efficiency as measured performance.
+- The Oracle standard-time adapter calls `LayGioCongHeThongAsync(productCode, "1523")`; preserve the documented source priority. The owner's workload example defines the value as standard minutes per product unit; multiply quantity once only. Verify returned production values but do not invent another unit basis.
+- The existing `GetTaskDuration` conversion is not proof that daily target optimization is implemented. Track assigned standard minutes and actual clock minutes separately, add date-specific target selection and deterministic tests, and do not use the parser's legacy 30% placeholder as the final worker-specific duration.
+- See `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` section 11 and `docs/ai/KNOWN_GAPS.md` section 10.
+- For a multi-worker team, do not credit the same Lot's standard minutes in full to every member or divide it equally without an owner-approved team-credit rule. The current Lot model has one `AssignedWorkerId`; do not pretend team-level accounting already exists.
+
+### Weekly shipment workload, product continuity and manual rebalancing
+
+- For each product, compute total workload once as `ProductQuantity * StandardMinutesPerUnit`; the owner's example uses 50 * 263.26 = 13,163 standard minutes for `YT13E01726P1-02`. The example defines the system standard time as minutes per product unit.
+- The selected seven-day Friday–Thursday plan is a shipment deadline. Check each product and the whole plan against the sum of real employee/date capacities before claiming completion.
+- Compute individual capacity as `AvailableClockMinutes * EfficiencyPercent / 100`; team capacity is the sum of members' actual individual capacity across the week. 250 standard minutes/person/day is only an estimate in the example, never a hardcoded constant.
+- Prefer stable employee/product ownership, keep the same crew on one product continuously where feasible, and minimize product switching.
+- Start products with the largest total standard workload early and plan early completion to leave inspection/rework time. Do not invent a fixed rework buffer.
+- The 8–10 person example must be reconciled with the existing T/J crew targets and jig concurrency O. Do not exceed physical jig capacity.
+- After dispatch, support reassignment, adding/removing team members and replacing an unexpectedly absent employee. Preserve quantity/workload exactly once, only reassign incomplete work, recompute all affected capacity/timeline/target values and mark manual overrides as owner-edited, and before automatic reruns make preserve-versus-reset behavior explicit; never silently discard them.
+- Current `LotTask` has one `AssignedWorkerId`; current UI only transfers a Lot to a single worker. Do not claim multi-member team editing or progress-aware absence replacement exists until implemented and tested.
+- If in-progress work has no recorded completed quantity, do not guess the remaining amount or reassign the full unit blindly.
+- See `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` sections 11–12 and `docs/ai/KNOWN_GAPS.md` section 11.

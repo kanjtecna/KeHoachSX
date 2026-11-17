@@ -65,3 +65,45 @@ Chưa xác minh được:
 - Test project và coverage thực tế.
 
 Mỗi nhiệm vụ liên quan những nội dung trên phải khảo sát và xác nhận trước.
+
+
+## 7. Target scheduling capabilities supplied by the owner (not implemented yet)
+
+- Default view Today, with Today/Tomorrow/Whole-week scopes.
+- A production week is Friday through the following Thursday, seven dates.
+- Users import product plans independently per assembly group.
+- In the latest consolidated result, one row contributes `Số lượng / Số người làm` to the product total and to the department of that employee. Sum these normalized contributions; the LR1–LR4 sheets contain fractional department attributions for shared products.
+- The latest product summary total is 317; the raw sum of `Số lượng` over employee rows is 542 and must not be treated as the normalized production total.
+- The normalized product summary and four department summaries reconcile to one another. Preserve fractional values and calculate with sufficient precision.
+- Prefer one employee department per product, but controlled sharing with a second department is allowed when needed; preserve each source group's quantity.
+- Working availability is date-specific and includes company holidays, employee overtime and approved leave.
+- On normal days, valid overtime extends the regular work timeline; on holidays, only employees with valid overtime may work and only for their registered overtime hours.
+- Jig/fixture category and physical set count from `dulieubanga.xlsx` affect the allowed worker/team arrangement and concurrency.
+
+Detailed rules, evidence labels and unresolved conditions are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. These are target requirements, not current implemented behavior. Current UI/algorithm still has a six-day in-memory model and must not be described as already supporting this calendar.
+
+## 8. Hiệu suất nhân viên và giờ công hệ thống
+
+[VERIFIED-CODE]
+- Hiệu suất nhân viên được lấy từ `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN.HIEUSUAT`, ghép theo `IDNHANVIEN` với `NHANVIEN.UserName`. SQL hiện lấy bản ghi có `No` lớn nhất và dùng giá trị dương như phần trăm; khi không có giá trị hợp lệ, hiện fallback 20%.
+- Giờ công hệ thống được bọc qua `OracleStandardTimeProvider`, gọi `ILayGioCongHeThong.LayGioCongHeThongAsync(productCode, "1523")`. `StandardTimeService` giữ thứ tự Oracle -> SQL Server `SANLUONGCAMLR.GIOCONG` -> mặc định 60.
+- Dòng kế hoạch có `GioCongDinhMuc > 0` được ưu tiên trước tra cứu nguồn ngoài.
+- `AutoDispatchService.GetTaskDuration` hiện quy đổi standard minutes thành thời gian chiếm lịch thực tế bằng cách chia cho `HieuSuat / 100`.
+
+[OWNER TARGET — NOT YET IMPLEMENTED END-TO-END]
+Mỗi nhân viên/ngày có mục tiêu giờ công định mức riêng:
+`DailyTargetStandardMinutes = DailyAvailableClockMinutes * HieuSuat / 100`.
+Thuật toán phải theo dõi riêng standard minutes được giao và actual clock minutes bị chiếm. Chọn Lot để tổng standard minutes gần mục tiêu nhất nhưng không vượt thời gian thực tế có thể làm. Xem `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` mục 11 để biết công thức, ví dụ, điều kiện không overbook, khác biệt giờ nghỉ và các kiểm thử bắt buộc.
+
+## 9. Ưu tiên hoàn thành sản phẩm, duy trì nhóm và điều chỉnh phân công
+
+[OWNER TARGET — NOT YET IMPLEMENTED]
+- All product quantities in a Whole week plan are intended to be completed inside that seven-day Friday–Thursday shipment week.
+- Total standard workload per product = production quantity * system standard minutes per unit. Example `YT13E01726P1-02`: 50 * 263.26 = 13,163 standard minutes.
+- Per-person daily standard capacity = available clock minutes * individual efficiency / 100. Team capacity is the sum of actual participating members' daily capacities. The approximate 250 standard minutes/person/day is only an example for estimating headcount, not a global constant.
+- Prefer stable teams to work on the same product continuously and minimize frequent product changes.
+- Start large-total-standard-work products early and plan to finish them early enough to inspect/rework before shipment; the numerical recovery buffer remains undefined.
+- After automatic dispatch, allow reassigning workers/Lots, adding/removing team members and replacing an unexpectedly absent employee. Redistribute only remaining incomplete work and preserve completed output.
+- Manual changes must update capacity, efficiency-adjusted target, actual timeline and completion/risk indicators. Mark them as owner-edited; before a later Auto Dispatch rerun, make preserve-versus-reset behavior explicit and never silently discard changes.
+
+Current code does not yet support this end-to-end. `LotTask` has one assigned worker ID; the UI supports moving a Lot to one other worker only, not managing a multi-worker team. The model does not track actual completed quantity/progress for partial-Lot recovery. See scheduling specification section 12 and known gaps.

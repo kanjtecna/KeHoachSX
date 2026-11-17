@@ -27,3 +27,5 @@ Không được chuyển trạng thái [OPEN] hoặc [PROPOSED] thành [APPROVED
 ## Baseline
 
 Tài liệu ban đầu được lập từ branch `main`, commit `08cc1b68d30ddc067f25ade9e13b355b26a9535e`, ngày 2026-11-16 (UTC). Khi branch thay đổi đáng kể, phải rà soát lại.
+
+10. `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` — ngày hôm nay/ngày mai, tuần Thứ Sáu–Thứ Năm, import theo nhóm, tăng ca, ngày nghỉ, nghỉ phép và ràng buộc bàn gá.

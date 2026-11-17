@@ -86,3 +86,14 @@ Do not run two writers against the same working tree/files. Use separate Git wor
 ## 6. Definition of done
 
 Use the checklist in AGENTS.md. A task is not done merely because an agent says it is done. Verify diff, build, tests and runtime behavior.
+
+
+## 7. Workflow for the new dated scheduling feature
+
+For work involving calendar scopes, group imports, overtime, holidays, leave or jigs:
+1. ChatGPT converts the owner's explanation into acceptance criteria and a list of unresolved decisions. It must keep target requirements separate from current code.
+2. Repository agent inspects `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`, current `KeHoachSX_View.razor`, `ShiftConfig`, `LotTask`, `AssemblyWorker` and `AutoDispatchService`.
+3. Gemini performs an independent read-only challenge: check date boundary cases, SQL filtering, employee/date key matching, overtime approval, task timeline arithmetic and jig resource conflicts. It must cite concrete source fields and not invent approval codes.
+4. One implementation agent produces a design first. The owner approves any new data contract, persistence model, database query, import layout and hard constraint.
+5. Implement one vertical slice at a time (calendar/date model -> group import -> leave/holiday/overtime availability -> jig constraints), adding regression tests at each step.
+6. A separate agent reviews the actual diff read-only. Validate the dated schedule with realistic anonymized fixtures for all seven dates and conflicting constraints.

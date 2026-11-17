@@ -78,12 +78,19 @@ The unit “minutes” is inferred from model comments and calculations. If sour
 
 ## 7. Standard-time source priority [CODE]
 
-`StandardTimeService` cache is checked first. On cache miss:
-1. Optional Oracle service via JtecShare, called with operation code `1523`.
-2. SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR`, latest positive `GIOCONG` by `TIME`.
-3. Default 60 minutes.
+This is a **read fallback order for one value (standard minutes)**, not permission to write to Oracle.
 
-A positive uploaded plan standard time bypasses this lookup. Do not change this precedence without approval.
+`WeeklyPlanParserService` first uses a positive standard-time value supplied in the uploaded plan. Only when that value is missing/non-positive does it call `StandardTimeService`.
+
+`StandardTimeService` then:
+1. Checks its in-memory cache.
+2. On cache miss, tries the optional Oracle service via JtecShare, called by the current adapter with operation code `1523`.
+3. If Oracle is unavailable, throws, or returns no positive value, queries SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR` for the latest positive `GIOCONG` by `TIME`.
+4. If SQL Server also has no positive result or fails, uses 60 minutes.
+
+Example: uploaded plan has no standard time -> Oracle returns 42 -> use 42 and cache it; Oracle has no value -> SQL Server returns 48 -> use 48; neither provides a positive value -> use 60 minutes.
+
+**Oracle is read-only.** AI must never create Oracle data/schema modification logic. See `AGENTS.md` and `DATA_SOURCES.md`.
 
 ## 8. Shift and breaks [CODE]
 
@@ -116,7 +123,7 @@ Current observed algorithm in `AutoDispatchService`:
    - skill score: exact product historical count, logarithmic formula capped at 1; if no exact count but same first-six-character product prefix exists, score 0.2;
    - workload score: remaining weekly capacity ratio, floor at 0;
    - continuity bonus: 0.35 if this worker's last assigned product is the current product.
-8. Total score = skill * 0.50 + workload * 0.35 + continuity * 0.15.
+8. Total score = skill * 0.50 + workload * 0.35 + continuityBonus * 0.15. The current `continuityBonus` is 0.35 when the worker's last assigned product equals the current product; the resulting maximum additive contribution is 0.0525 (not 15 percentage points).
 9. If assignment would exceed worker weekly capacity, subtracts 2.0 from score.
 10. Tries candidates by descending score and days from day 0 upward, fitting within daily net capacity.
 11. If no candidate/day fits, assigns to highest-ranked candidate on that worker's least-loaded day, potentially exceeding capacity.
@@ -146,13 +153,13 @@ The repository's `doccuments/data.txt` states:
 
 These are business notes, not verified algorithm constraints. Before implementing them, owner must clarify:
 - Definition/units for “số dây cắt”, threshold for “ít/nhiều”, and whether quantity is per day, lot, or weekly total.
-- Whether jig count is input data, static product master data, or derived.
-- Whether a jig can serve multiple workers/groups simultaneously.
+- The jig count source for this requirement is column O in `dulieubanga.xlsx`. One team may contain multiple workers and share one jig set; O limits the number of independent teams using that product concurrently.
+- Whether and how a physical jig set is released during breaks and overnight/day boundaries.
 - Whether assignment is per product, per SEQ, per lot, or per operation/day.
 - Priority between skill expertise, efficiency balance, workload and jig availability.
 - What qualifies as “same worker continues tomorrow” and exceptions when absent.
 - Whether a replacement worker continues the same product task from remaining quantity or restarts a lot.
-- Which leave types and dates make a worker unavailable.
+- How unfinished work is handed over to a replacement worker when the originally assigned worker is absent on a later date.
 
 ## 11. Required invariants [TARGET — approve before implementing]
 
@@ -169,3 +176,95 @@ Recommended invariant candidates:
 - Total input quantity equals total output quantity after normalization, with rejected rows separately reported.
 
 These invariants are targets to be approved; do not impose them if they conflict with the owner's operational policy.
+
+
+## 12. Date-, group-, attendance- and jig-aware scheduling [OWNER TARGET]
+
+The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. Core decisions confirmed by the owner:
+
+- Calendar scopes: Today, Tomorrow and Whole week; production week is seven dates from Friday through the following Thursday.
+- A Whole week import is one weekly demand-pool file for the selected group. Its product/Lot work is distributed by the scheduler across all seven dates based on date-specific capacity; rows are not pre-assigned to weekdays.
+- In the latest consolidated result workbook, each row's normalized contribution is `Số lượng / Số người làm`.
+- Product total is the sum of these row contributions across employees. Department/product contribution is the sum of row contributions filtered by the employee's `Nhóm`.
+- The product summary and LR1–LR4 department sheets must reconcile; fractional department contributions are valid when workers from two departments share a product.
+- Never sum raw `Số lượng` across employee rows as if each were independent output. In this workbook that raw sum is 542, while the normalized overall product total is 317.
+- Do not round fractions before aggregation. Flag missing/zero/invalid `Số người làm`; never divide by zero.
+- Preserve `Số người làm` and `số thứ tự nhóm`; do not infer the full team key or overwrite headcount by counting rows using product + sequence alone.
+- On normal dates, overtime starts at 17:00 and adds `SOGIO` hours to the normal shift. On holidays, overtime starts at 08:00 and `SOGIO` is the only available duration.
+- In the initial phase, do not filter overtime rows by `STATUS`, `QUANLYDUYET` or `GADUYET`; approval filtering will be defined later.
+- Each `TA.dbo.nghile.date` value is one non-recurring holiday date.
+- A leave row with `TRANGTHAI <> 7` excludes the matching employee for the entire covered date. Partial-day fields are ignored in this phase; SQL NULL does not satisfy the inequality.
+- For category T (L=T, N in 2 or 3, C>50), the scheduler may choose one or two workers according to capacity and allocation fit, without inventing another C threshold.
+- For category J (L=J, N>=2), N is only the rule condition, not a worker-count cap: C>=400 => 4 workers; C>=300 => 3; C>=200 => 2. C<200 remains undefined.
+- Column O counts physical jig sets and limits concurrent independent teams/work streams for a product. Multiple workers cooperating as one team share one set; O is not a worker cap.
+- Do not implement plan persistence in this phase. Keep assignment state in memory and provide Excel export after dispatch; use the corrected eight-column target result as the baseline export contract. Preserve `Số người làm` and `số thứ tự nhóm`; their exact grouping relation needs a separate rule, not automatic correction.
+- Re-importing the same group and same date/week replaces only that exact scope; never append quantities.
+- Keep product work in one group by default. When necessary, allow at most two groups for one product, preserve each department's normalized contribution computed from `Số lượng / Số người làm`, and make cross-group use an exception.
+- Missing jig metadata means skip that product's jig check with a warning, not drop the product.
+- If weekly capacity is insufficient, keep excess work unassigned and warn.
+
+These are owner-approved target requirements, **not evidence that current code already implements them**. Current `AutoDispatchService` remains a six-day in-memory algorithm and does not yet apply the complete dated calendar, overtime, leave or jig-resource constraints.
+
+## 13. Per-employee efficiency target [OWNER REQUIREMENT — NEW]
+
+Each employee's efficiency is used to derive an individual daily target for **system standard minutes**:
+
+```
+DailyTargetStandardMinutes
+    = DailyAvailableClockMinutes * (HieuSuatPercent / 100)
+```
+
+For a worker with 8 net usable normal hours plus 1.5 usable overtime hours and 45% efficiency:
+- Available clock time = 570 minutes.
+- Target system standard work = 256.5 minutes.
+
+The standard-minute value for a Lot comes from the positive plan `GioCongDinhMuc` when supplied; otherwise the current lookup order is Oracle `LayGioCongHeThong` -> SQL Server `SANLUONGCAMLR.GIOCONG` -> default. The current Oracle adapter passes process code `1523` and reads `GioCongHT`.
+
+Keep the measures separate:
+- Standard minutes credited to a worker = sum of the assigned Lot's system standard-minute values.
+- Actual clock duration occupied by a Lot = its system standard minutes / (worker efficiency / 100).
+- Dispatch should get each worker/date's assigned standard-minute total as close as feasible to the daily standard-minute target while staying within actual available clock time.
+- Do not overbook actual clock time, silently exceed the target, or split an indivisible Lot without an approved rule.
+- Do not apply the efficiency percentage twice. Do not use the parser's legacy 30% placeholder as the final worker-specific duration.
+- Preserve decimal precision until display/export.
+
+The example assumes eight hours are net usable normal work minutes after breaks. The currently observed `ShiftConfig` default yields 490 net minutes (07:30–17:00 less 80 minutes of breaks), so the date-specific capacity must come from the real shift/attendance configuration; do not hardcode the example's 570 minutes.
+
+This is an owner-approved target rule, **not yet implemented end-to-end**. See sections 11 and 11.4–11.6 of `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for code evidence, source priority, unit cautions and required tests.
+
+## 14. Weekly output, stable crews and editable dispatch [OWNER REQUIREMENT — NEW]
+
+### Product workload and shipment deadline
+
+- Every product in a Whole week plan is expected to finish within the selected seven-day production week (Friday–Thursday) for shipment.
+- `ProductStandardWorkMinutes = ProductQuantity * StandardMinutesPerUnit`.
+- For `YT13E01726P1-02`: quantity 50 * system standard 263.26 minutes/unit = 13,163 standard minutes. Its seven-day average is 1,880.43 standard minutes/day; actual daily distribution follows employee/date capacity and does not need to be equal on all seven dates.
+- Treat the system standard time supplied in this example as minutes per one product unit. Do not multiply it twice when the parser has already expanded quantity into individual unit tasks.
+- The assigned quantity and total standard workload for a product are conserved across all employees/teams. Adding workers must not duplicate the same product units or multiply the total work pool.
+
+### Staffing feasibility and efficiency mix
+
+- Per employee/date capacity in system standard minutes is `AvailableClockMinutes * HieuSuat / 100`.
+- Team/product capacity is the sum of the participating employees' individual capacities across the actual available dates.
+- Estimate required headcount from actual employee-specific capacities. The owner's rough estimate is 250 standard minutes per employee/day; across seven full dates this gives 1,750 per employee/week. 13,163 / 1,750 = 7.52, so at least 8 equally productive, fully available employees are required by that estimate. Lower-efficiency workers or fewer available days can increase the required headcount (approximately 10 in the owner's example).
+- Do not hardcode an average efficiency or a fixed headcount of 8/10. Use each person's actual efficiency, breaks, overtime, holidays and leave.
+- If the team's combined weekly standard capacity is insufficient, show the shortfall/additional capacity needed instead of claiming completion.
+- The T/J worker-count targets and the possibility of an 8–10 person high-workload crew must be reconciled with the actual jig-set count O. Do not exceed O concurrent independent teams.
+
+### Continuity, product priority and rework risk
+
+- Prefer a stable employee/team dedicated to one product continuously until its assigned work is complete; minimize frequent product-code switching and setup/changeover.
+- Large products are prioritized by total standard workload (`quantity * standard minutes/unit`) for early start and early planned completion, leaving time to inspect, correct defects and rework before shipment.
+- Do not invent a fixed rework buffer. The amount/days must be configurable after the owner defines it.
+- Continuity is a strong preference, not a hard rule that may prevent completion of the weekly shipment plan.
+
+### Post-dispatch manual adjustment
+
+- After Auto Dispatch, the user must be able to reassign workers/Lots, add or remove one or more members from a product team, and replace an unexpectedly absent employee.
+- Every change must recalculate employee/date loads, standard-minute targets, actual clock time, timeline, product completion estimate and warnings.
+- Only remaining incomplete work may be redistributed after an absence; completed output must not be duplicated or reassigned.
+- Mark manual assignments as pinned/owner-edited. Before a later Auto Dispatch rerun, make preserve-versus-reset behavior explicit; never silently discard a manual change. Confirm the default policy before implementation.
+- Keep manual changes in the in-memory result and Excel export in the current phase; do not write assignments to production DB.
+
+[CURRENT CODE GAP]
+Current `LotTask` stores one `AssignedWorkerId`, not a multi-member crew or per-worker quantity share. The current UI modal can transfer one Lot from one worker to another but cannot add/remove multiple team members. The model also does not record completed quantity/progress for safe partial-Lot reassignment. These are future implementation requirements, not current features.
