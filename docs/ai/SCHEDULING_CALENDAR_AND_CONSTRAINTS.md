@@ -65,7 +65,7 @@ For each production date:
 1. Load eligible employees for the selected group.
 2. Apply approved leave exclusion for that date.
 3. Determine whether the date is a company holiday/non-working date.
-4. Read the employee's valid overtime registration for that date.
+4. Read matching overtime records using the initial no-status-filter rule in section 4.3.
 5. Compute regular and overtime capacity according to the rules below.
 6. Apply jig/fixture constraints before placing tasks.
 7. Produce timeline chunks using the actual capacity windows, preserving breaks and overtime boundaries.
@@ -76,92 +76,90 @@ A person absent on one date can still be scheduled on other dates in the same we
 
 [OWNER REQUIREMENT]
 - Company holiday/non-working dates are stored in SQL Server table `TA.dbo.nghile`.
-- Relevant columns supplied by the owner: `id`, `repetition_type`, `date`, `createdAt`, `updatedAt`, `holiday_id`.
-- The scheduler must use this source to identify which of the seven dates in the production week are company holidays.
+- Relevant columns supplied: `id`, `repetition_type`, `date`, `createdAt`, `updatedAt`, `holiday_id`.
+- Each stored `date` value is one actual holiday date. Rows do **not** repeat; do not expand a date into recurring holidays.
+- Use these one-off dates to classify the seven dates in the selected production week.
 
 [IMPLEMENTATION RULES]
 - Access this SQL Server table through Infrastructure using parameterized, read-only queries.
 - Do not write to or modify this table as part of dispatch.
-- Do not compare the `date` NVARCHAR field lexicographically. Parse/normalize it to a date using the actual stored format.
-- Interpret `repetition_type` and `holiday_id` only after inspecting actual sample rows and related table schema. Do not assume recurrence semantics.
-- A date classified as a company holiday is not automatically a normal 490-minute shift.
+- Treat `date` as the authoritative date value. Do not infer recurrence from `repetition_type` or `holiday_id`.
+- Do not compare the NVARCHAR date lexicographically. Parse/normalize it after inspecting the actual stored format.
+- A company holiday is not a normal 490-minute shift; apply the holiday overtime window in section 4.2.
 
-[OPEN]
-- Need representative rows and the actual formats/values of `date`, `repetition_type`, and related `holiday_id` data.
-- Confirm whether recurring holidays are expanded annually/weekly, and whether the authoritative date comes from `nghile.date` or a related holiday master table.
+[REMAINING TECHNICAL CHECK]
+- Inspect representative values to determine the stored format of `nghile.date` before implementing its parser. The date format is a technical data check; recurrence is already confirmed as absent.
 
 ## 4. Overtime — `TA.dbo.Overtime`
 
 [OWNER REQUIREMENT]
-Provided table:
-- `TA.dbo.Overtime`
+Provided table: `TA.dbo.Overtime`.
 - `ID`: employee identifier.
 - `date`: overtime date (NVARCHAR).
-- `SOGIO`: number of overtime hours.
-- Other columns include `STATUS`, `NGUOIDANGKY`, `QUANLYDUYET`, `GADUYET`, `NHOM`, `LYDO`, `createdAt`.
+- `SOGIO`: number of overtime hours (NVARCHAR).
+- Other fields include `STATUS`, `NGUOIDANGKY`, `QUANLYDUYET`, `GADUYET`, `NHOM`, `LYDO`, `createdAt`.
 
-Only `SOGIO` contains the overtime duration according to the owner. Overtime is employee-specific and date-specific.
+Only `SOGIO` supplies the overtime duration. Overtime is specific to an employee and a calendar date.
 
 ### 4.1 Normal working date
 
 [OWNER REQUIREMENT]
-- Start from the normal shift capacity.
-- If the employee has valid overtime on that date, add `SOGIO × 60` minutes to that employee's available time.
-- Extend the employee's timeline to display the overtime interval; do not merely increase a KPI number without extending the scheduling timeline.
-- Overtime registered for one employee must not increase another employee's capacity.
+- The current normal shift ends at **17:00**.
+- On a normal working date, overtime starts immediately after the normal shift, at **17:00**.
+- Add `SOGIO × 60` minutes to the matching employee's normal daily capacity and extend their timeline from 17:00 for that duration.
+- Keep the normal shift's existing working/break windows before 17:00. Do not apply normal-shift break deductions to the registered overtime duration.
 
-Current normal-shift defaults observed in code are 07:30–17:00 with 80 minutes of breaks, giving 490 net working minutes. Preserve this only as the current default unless an approved shift configuration changes it.
+The currently observed normal shift is 07:30–17:00 with 80 minutes of breaks, giving 490 net regular minutes. This remains the current default unless the owner approves a shift configuration change.
 
 ### 4.2 Company holiday/non-working date
 
 [OWNER REQUIREMENT]
-- Only employees who have a valid overtime registration for that exact date may be scheduled on a company holiday.
-- Employees without a valid overtime record have zero available working minutes on that holiday.
-- For an eligible employee, available working duration on the holiday is `SOGIO × 60` minutes. Do not also add a normal shift on a company holiday unless the owner explicitly defines that date differently.
-- Show the holiday overtime interval on the timeline and use it in task placement.
+- Only employees with a matching overtime record for the exact holiday date can be scheduled on that date.
+- An employee without a matching overtime record has zero capacity on that holiday.
+- Holiday overtime starts at **08:00**.
+- The employee's entire available holiday duration is `SOGIO × 60` minutes from 08:00. Do not add the normal shift capacity.
+- Extend the visible timeline from 08:00 by the registered duration.
 
-### 4.3 Validation and approval
+### 4.3 Overtime row selection and approval filtering
 
-[OPEN — BLOCKING]
-- `STATUS`, `QUANLYDUYET` and `GADUYET` exist, but the owner has not defined which combination means the overtime registration is approved/valid. Do not treat every row as approved. Do not invent status numbers or approval semantics.
-- Confirm whether `Overtime.ID` always matches `NHANVIEN.UserName` / worker `ID`.
-- Confirm whether `Overtime.NHOM` must match `NHANVIEN.GROUPBOPHAN`, and how mismatches are handled.
-- Confirm the actual stored date format in `Overtime.date` and numeric format of `SOGIO` (integer/decimal, dot/comma).
-- The table has no explicit overtime start time. Confirm whether normal-day overtime starts immediately after the regular shift end (currently 17:00), and what start time applies on a holiday.
-- Confirm whether overtime includes separate break intervals or whether the full `SOGIO` is usable task time.
-- Confirm whether duplicate registrations for the same employee/date can exist and whether to sum, choose latest, or reject them.
+[OWNER REQUIREMENT — INITIAL PHASE]
+- In the initial phase, use matching overtime records without adding a filter on `STATUS`, `QUANLYDUYET` or `GADUYET`.
+- Do not invent status values or approval combinations. The owner will provide approval-filtering logic in a later change.
+- This is a temporary data-selection policy, not a statement that every row is formally approved.
 
-Until approval semantics and duplicate handling are confirmed, the implementation must not assign people to overtime-only windows based merely on the presence of an arbitrary row.
+[REMAINING TECHNICAL CHECKS]
+- Verify how `Overtime.ID` maps to the application employee identifier (`AssemblyWorker.WorkerId` / `NHANVIEN.UserName`).
+- Verify whether `Overtime.NHOM` must match `NHANVIEN.GROUPBOPHAN` or is informational; do not invent a group authorization rule.
+- Inspect actual stored formats for `Overtime.date` and `SOGIO` before parsing. Reject malformed values visibly.
+- Check whether duplicate rows can exist for the same employee/date. Do not silently sum, choose latest or discard duplicates until the owner defines that policy.
+- No overtime-break deduction has been provided. Treat `SOGIO` as the usable overtime duration in this phase.
 
 ## 5. Leave/absence — `STOCKMANAGEMENT.dbo.thutuchanhchinh`
 
 [OWNER REQUIREMENT]
-The table contains employee leave/administrative request records. Relevant fields:
+Relevant fields:
 - `ID`: employee identifier.
-- `STARTDATE`: leave start date/time.
-- `ENDDATE`: leave end date/time.
-- `TRANGTHAI`: request status.
-
-Filter rule supplied by the owner:
-- Consider records where `TRANGTHAI <> 7`.
-- The leave interval is bounded by `STARTDATE` and `ENDDATE`.
-- Match the employee using `ID`.
+- `STARTDATE`, `ENDDATE`: leave interval.
+- `TRANGTHAI`: NVARCHAR status.
 
 ### 5.1 Scheduling behavior
 
-- For a target date covered by a qualifying leave record, the employee must not receive work for that date.
-- Apply leave per date, not to the entire week, unless the leave interval spans the entire week.
-- Use inclusive date overlap as the proposed interpretation: `STARTDATE <= end-of-target-date` and `ENDDATE >= start-of-target-date`. Confirm how the application should treat timestamps and half-day records.
-- A leave record must not be inferred from `NAME`, `LOAIPHEP` or free-text reason; use the specified ID/status/date fields.
-- Query SQL Server read-only with parameters; do not write back or approve leave requests.
+- When `TRANGTHAI <> 7` and the employee/date interval matches, exclude that employee for the **entire covered calendar date**.
+- Apply exclusion per date, not to the whole week. An employee may still be scheduled on dates outside their leave interval.
+- Treat `STARTDATE` and `ENDDATE` as inclusive when deriving covered calendar dates.
+- Use the employee ID, status and date fields; do not infer leave from `NAME`, `LOAIPHEP` or free-text reason.
+- Query SQL Server read-only with parameters. Do not write back or approve leave requests.
 
-### 5.2 Partial-day leave
+### 5.2 Partial-day and NULL behavior
 
-[OPEN]
-The table also has `STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI` and related fields, but the supplied rule currently defines only STARTDATE/ENDDATE. Until the owner provides the half-day/hourly rules, treat date-overlapping records as unavailable for the whole date (conservative policy), or stop for owner confirmation if that would materially reduce capacity. Do not try to infer morning/afternoon from leave-type text.
+[OWNER REQUIREMENT — INITIAL PHASE]
+- Ignore `STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI` and other partial-day fields.
+- Any qualifying record excludes the employee for the whole date, even if the source row represents part of a day.
 
-[SQL NULL NOTE]
-Because `TRANGTHAI` is NVARCHAR, SQL predicate `TRANGTHAI <> '7'` does not include NULL rows. Confirm whether NULL status should be excluded or treated as an active leave request. Do not silently change the supplied filter.
+[SQL NULL SEMANTICS]
+- Use the supplied inequality rule, equivalent to `TRANGTHAI <> N'7'` for the NVARCHAR column.
+- A SQL NULL value does not satisfy `<>`; NULL-status rows are not included by this filter.
+- Do not add `OR TRANGTHAI IS NULL` unless the owner changes the requirement.
 
 ## 6. Jig/fixture constraints — `dulieubanga.xlsx`
 
@@ -175,18 +173,18 @@ The uploaded workbook `dulieubanga.xlsx` was inspected:
 - Column L contains `T`, `J` or blank values.
 - Columns N and O contain integer values in the observed range 1–6 where present, but some rows have missing values.
 
-The current sample must therefore be read using the owner's positional column mapping. Do not skip row 1 as a header. Do not assume every future export has the same shape without validating it.
+Do not skip row 1 as a header. Validate future exports rather than assuming every workbook has the exact same shape.
 
 ### 6.2 Column mapping supplied by the owner
 
 | Excel column | Use in scheduling |
 |---|---|
 | B | Product code / `MaSanPham` |
-| C | Numeric quantity/workload value used by the worker-count rules |
+| C | Numeric quantity/workload value used by worker-count rules |
 | L | Jig/fixture category flag: `T` or `J` |
-| M | Fixture/jig description or identifier (observed sample; informational until defined) |
-| N | Numeric condition used by the T/J rules; exact business meaning still needs confirmation |
-| O | Number of physical jig/fixture sets available for the product |
+| M | Fixture/jig description or identifier (informational until defined) |
+| N | Numeric condition used by T/J rules |
+| O | Number of physical jig sets currently available for the product |
 
 Do not rename or reinterpret the columns without owner confirmation.
 
@@ -197,10 +195,11 @@ When all conditions hold:
 - Column N is 2 or 3;
 - Column C > 50;
 
-then the product can be assigned to **one or two workers**.
+the product may be assigned to **one or two workers**.
 
-[OPEN]
-The owner has not yet specified the threshold/decision rule for choosing one worker versus two workers. Do not invent a quantity threshold or always choose two. Treat this as a configurable/pending decision and expose it for confirmation.
+[OWNER REQUIREMENT — CONFIRMED]
+- The scheduler may choose either one or two workers according to employee/date capacity, product workload, skills/efficiency and the fit of the overall weekly allocation.
+- Do not invent another fixed C threshold to choose between one and two. This is a scheduling decision, not an additional quantity rule.
 
 ### 6.4 Category J rule [OWNER REQUIREMENT]
 
@@ -208,81 +207,81 @@ When:
 - Column L = `J`;
 - Column N >= 2;
 
-the worker-count target depends on column C:
+apply the worker-count target derived from C:
 - C >= 400: 4 workers.
 - C >= 300 and < 400: 3 workers.
 - C >= 200 and < 300: 2 workers.
 
-[OPEN]
-- Worker count for C < 200 is not specified.
-- It is not yet clear whether column N limits the computed worker count (for example N=2 but C>=400 implies 4 workers) or is only an eligibility condition.
-- Do not extrapolate beyond the given thresholds.
+[OWNER REQUIREMENT — CONFIRMED]
+- N is only the condition that enables this J rule; it is **not** a maximum worker count.
+- For example, N=2 and C>=400 still requires four workers.
+- C < 200 has no J-specific worker-count rule yet. Do not invent one or extrapolate the thresholds.
 
 ### 6.5 Physical jig-set capacity — column O [OWNER REQUIREMENT]
 
-- Column O is the number of physical jig sets available for the product.
-- O=1 means only one jig set can be used at a time.
-- At one time, only one worker **or one worker group/team** may use that single set.
-- O is a limit on concurrently active jig groups/sets, not automatically a limit on the number of workers in one group.
-- If O=2, the scheduling engine may consider at most two concurrently active groups for that product, subject to the other worker-count rules and actual resource availability.
-- A jig set cannot be double-booked by overlapping tasks. The resource must be reserved for the relevant task time interval and released when the task finishes or pauses according to the approved process.
+- Column O is the number of physical jig sets currently available for that product.
+- O=1 means only one independent team/work stream can use that product's jig at a time.
+- A team can contain multiple workers. For example, four workers collaborating on one product as one team share and consume **one** jig set, not four.
+- O does not limit the maximum number of workers in one team.
+- O=2 permits up to two independent teams/work streams on that product at the same time, provided the work is divided into separate tasks and all other constraints are met.
+- Each simultaneously active independent team using the product consumes one physical jig set. Do not double-book the same set over overlapping time intervals.
 
-[OPEN]
-- Confirm whether multiple workers may cooperate as one group using one jig set at the same time.
-- Confirm whether O>1 allows parallel groups on the same product and how tasks/lots are divided among those groups.
-- Confirm how to handle O=0, blank O or non-numeric values. Do not treat missing jig-set data as unlimited capacity.
-- Confirm whether a jig set is reserved across break periods and overnight/day boundaries or released during those intervals.
+[REMAINING OPEN ITEMS]
+- Define the safe behavior when O=0, blank or non-numeric. Do not treat missing jig-set data as unlimited capacity or silently substitute O=1.
+- Confirm whether a jig set remains reserved during breaks and overnight/day boundaries, or may be released for another team during those intervals.
 
 ### 6.6 Missing/invalid jig metadata
 
 - Do not silently substitute N=1, O=1 or unlimited jig capacity when values are missing.
-- Flag the product as `JigDataNeedsReview` (or an equivalent explicit validation result).
-- Do not create multiple parallel groups without valid jig metadata.
-- The owner must decide the conservative fallback for products with blank L/N/O before the feature is enabled in production.
+- Flag products with missing/invalid L/N/O as `JigDataNeedsReview` (or an equivalent explicit validation result).
+- Do not create parallel teams without valid jig metadata.
+- Keep affected products visible and report them; conservative fallback behavior remains to be confirmed before production use.
 
 ## 7. Combined dispatch constraints and evaluation order
 
 The future scheduler must evaluate a task against all of these dimensions:
 1. Product belongs to the selected plan scope (date/week) and selected group.
 2. Worker is active and eligible for the selected group.
-3. Worker is not on qualifying leave on that date.
-4. Worker has positive availability on that date (normal shift and/or valid overtime).
-5. If the date is a company holiday, worker has valid approved overtime for that exact date.
-6. Product's T/J rules determine a permitted worker/team target once all missing thresholds are approved.
-7. Physical jig-set count O limits the number of concurrent jig groups using that product.
-8. Skill, efficiency and workload ranking selects among eligible workers only; ranking must never override leave, holiday, group, time-capacity or jig hard constraints.
-9. The task must be represented on the correct dated timeline, including breaks and approved overtime periods.
-10. All input product quantities must be accounted for; overload, missing metadata and unassigned tasks must be visible.
+3. Worker is not on a qualifying whole-day leave on that date.
+4. Worker has positive availability on that date (normal shift and/or overtime record selected under the initial no-status-filter rule).
+5. If the date is a company holiday, the worker has a matching overtime record for that date and receives only the 08:00 + SOGIO window.
+6. Product T/J rules determine the required/allowed team size according to section 6.
+7. Physical jig-set count O limits the number of independent teams concurrently using that product, not the number of people inside a team.
+8. Skill, efficiency and workload ranking selects among eligible workers only; ranking must never override any hard constraint.
+9. The task must be represented on the correct dated timeline, including normal breaks and overtime boundaries.
+10. All imported product quantities must be accounted for; overload, missing metadata and unassigned work must remain visible.
 
-Hard constraints (eligibility, leave, holiday/overtime authorization, available minutes, jig resource capacity) take precedence over soft scoring (skill, workload balance, continuity).
+Hard constraints (group eligibility, leave, holiday/overtime availability, available minutes and jig-resource capacity) take precedence over soft scoring (skill, workload balance and continuity).
 
 ## 8. Required tests for the scheduling extension
 
 At minimum add deterministic automated tests for:
-- App defaults to the local current date.
+- App defaults to the configured local current date.
 - Today/Tomorrow select exact calendar dates.
 - Friday–Thursday week calculation, including dates on Friday and Thursday.
 - Seven-day week indexing and correct date-to-timeline mapping.
+- A Whole week file is treated as one weekly pool and distributed across all seven dates based on capacity.
 - Daily import does not overwrite other dates.
 - One-group import does not overwrite other groups.
-- Each worker is excluded only on leave dates, not the whole week.
-- `TRANGTHAI = 7` does not exclude; `TRANGTHAI <> 7` follows the approved NULL policy.
-- Holiday with no valid overtime registration => zero capacity.
-- Holiday with valid overtime => capacity from SOGIO only.
+- Every imported quantity is either scheduled or reported as unassigned/overloaded.
+- Each worker is excluded only on dates covered by a leave record with `TRANGTHAI <> 7`.
+- Leave exclusion blocks the whole date; partial-day fields do not shorten the exclusion in this phase.
+- NULL leave status is excluded by SQL inequality semantics.
+- Holiday with no matching overtime record => zero capacity.
+- Holiday with a matching overtime record => capacity starts at 08:00 and equals SOGIO only.
 - Normal day without overtime => regular shift capacity.
-- Normal day with overtime => regular shift plus SOGIO minutes.
-- Overtime belongs only to the matching employee/date/group.
-- Overtime is not accepted when the registration is not approved.
-- T category conditions and both worker-count choices after thresholds are defined.
-- J thresholds at C=199, 200, 299, 300, 399, 400.
-- O=1 prevents two concurrent jig groups; O=2 prevents more than two.
-- Multiple workers inside one team do not accidentally consume multiple jig sets if one team shares one set.
+- Normal day with overtime => regular capacity plus SOGIO minutes starting at 17:00.
+- The initial overtime query does not filter by `STATUS`, `QUANLYDUYET` or `GADUYET`.
+- Overtime is mapped only to the matching employee/date; duplicate records are surfaced until a duplicate policy is approved.
+- T conditions allow one or two workers and the scheduler does not introduce an extra hard C threshold.
+- J thresholds at C=199, 200, 299, 300, 399, 400; N>=2 is a condition, not a headcount cap.
+- O=1 allows a multi-worker team (for example four employees) to share one jig, but prevents a second independent team from using it concurrently.
+- O=2 prevents more than two independent concurrent teams for the product.
 - Missing/invalid L/N/O is flagged, never silently interpreted.
 - A worker's task timeline never overlaps their leave or another task, and a jig set is never double-booked.
 - Manual reassignment cannot bypass group, leave, holiday/overtime or jig constraints.
 
-Do not mark the feature complete until the open business questions affecting these tests have been answered and accepted by the owner.
-
+Do not mark the feature complete until all business rules above are implemented and tests pass. Remaining technical/data-format questions are tracked in `KNOWN_GAPS.md`.
 
 ## 9. Plan persistence and Excel export
 
