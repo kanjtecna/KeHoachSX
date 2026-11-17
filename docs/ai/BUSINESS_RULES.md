@@ -184,6 +184,9 @@ The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_C
 
 - Calendar scopes: Today, Tomorrow and Whole week; production week is seven dates from Friday through the following Thursday.
 - A Whole week import is one weekly demand-pool file for the selected group. Its product/Lot work is distributed by the scheduler across all seven dates based on date-specific capacity; rows are not pre-assigned to weekdays.
+- Source plan column C is the total quantity required for a product in the source group. The result's `Số lượng` is each employee's individual allocation. The sum of employee allocations for product + department must exactly equal the source quantity.
+- Employee allocations may differ; preserve any remainder and do not copy the entire group quantity to every employee. `Số người làm` and `số thứ tự nhóm` are separate grouping metadata, not a reason to multiply or divide the result quantity during source reconciliation.
+- The corrected example's normalized summary is `SUM(Số lượng / Số người làm)`; it is distinct from the raw production total and must not replace it.
 - On normal dates, overtime starts at 17:00 and adds `SOGIO` hours to the normal shift. On holidays, overtime starts at 08:00 and `SOGIO` is the only available duration.
 - In the initial phase, do not filter overtime rows by `STATUS`, `QUANLYDUYET` or `GADUYET`; approval filtering will be defined later.
 - Each `TA.dbo.nghile.date` value is one non-recurring holiday date.
