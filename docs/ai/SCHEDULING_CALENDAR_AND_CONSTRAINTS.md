@@ -63,7 +63,7 @@ The scheduler must calculate availability **per employee, per date**, rather tha
 
 For each production date:
 1. Load eligible employees for the selected group.
-2. Apply approved leave exclusion for that date.
+2. Apply whole-day leave exclusion for records with `TRANGTHAI <> 7` on that date.
 3. Determine whether the date is a company holiday/non-working date.
 4. Read matching overtime records using the initial no-status-filter rule in section 4.3.
 5. Compute regular and overtime capacity according to the rules below.
@@ -277,6 +277,7 @@ At minimum add deterministic automated tests for:
 - J thresholds at C=199, 200, 299, 300, 399, 400; N>=2 is a condition, not a headcount cap.
 - O=1 allows a multi-worker team (for example four employees) to share one jig, but prevents a second independent team from using it concurrently.
 - O=2 prevents more than two independent concurrent teams for the product.
+- Holiday matching uses each `nghile.date` value once; no recurring holiday is generated.
 - Missing/invalid L/N/O is flagged, never silently interpreted.
 - A worker's task timeline never overlaps their leave or another task, and a jig set is never double-booked.
 - Manual reassignment cannot bypass group, leave, holiday/overtime or jig constraints.
@@ -291,6 +292,7 @@ Do not mark the feature complete until all business rules above are implemented 
 - After dispatch/assignment is complete, the user must be able to export the resulting plan to an Excel file.
 - Do not claim the plan is saved permanently. Closing/restarting the application may discard the in-memory assignment unless the user has exported it.
 - The Excel export is an output artifact; it does not write back to the production database.
+- Export tests cover preserving all assigned dates/workers and reporting unassigned or overloaded tasks when the approved export contract is implemented.
 
 [REMAINING DESIGN DETAIL]
 - The exact Excel export columns, worksheet layout, formatting and whether it includes unassigned/overloaded tasks still need an owner-approved specification before implementing the export.
