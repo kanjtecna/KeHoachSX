@@ -78,12 +78,19 @@ The unit “minutes” is inferred from model comments and calculations. If sour
 
 ## 7. Standard-time source priority [CODE]
 
-`StandardTimeService` cache is checked first. On cache miss:
-1. Optional Oracle service via JtecShare, called with operation code `1523`.
-2. SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR`, latest positive `GIOCONG` by `TIME`.
-3. Default 60 minutes.
+This is a **read fallback order for one value (standard minutes)**, not permission to write to Oracle.
 
-A positive uploaded plan standard time bypasses this lookup. Do not change this precedence without approval.
+`WeeklyPlanParserService` first uses a positive standard-time value supplied in the uploaded plan. Only when that value is missing/non-positive does it call `StandardTimeService`.
+
+`StandardTimeService` then:
+1. Checks its in-memory cache.
+2. On cache miss, tries the optional Oracle service via JtecShare, called by the current adapter with operation code `1523`.
+3. If Oracle is unavailable, throws, or returns no positive value, queries SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR` for the latest positive `GIOCONG` by `TIME`.
+4. If SQL Server also has no positive result or fails, uses 60 minutes.
+
+Example: uploaded plan has no standard time -> Oracle returns 42 -> use 42 and cache it; Oracle has no value -> SQL Server returns 48 -> use 48; neither provides a positive value -> use 60 minutes.
+
+**Oracle is read-only.** AI must never create Oracle data/schema modification logic. See `AGENTS.md` and `DATA_SOURCES.md`.
 
 ## 8. Shift and breaks [CODE]
 
@@ -116,7 +123,7 @@ Current observed algorithm in `AutoDispatchService`:
    - skill score: exact product historical count, logarithmic formula capped at 1; if no exact count but same first-six-character product prefix exists, score 0.2;
    - workload score: remaining weekly capacity ratio, floor at 0;
    - continuity bonus: 0.35 if this worker's last assigned product is the current product.
-8. Total score = skill * 0.50 + workload * 0.35 + continuity * 0.15.
+8. Total score = skill * 0.50 + workload * 0.35 + continuityBonus * 0.15. The current `continuityBonus` is 0.35 when the worker's last assigned product equals the current product; the resulting maximum additive contribution is 0.0525 (not 15 percentage points).
 9. If assignment would exceed worker weekly capacity, subtracts 2.0 from score.
 10. Tries candidates by descending score and days from day 0 upward, fitting within daily net capacity.
 11. If no candidate/day fits, assigns to highest-ranked candidate on that worker's least-loaded day, potentially exceeding capacity.
@@ -169,3 +176,17 @@ Recommended invariant candidates:
 - Total input quantity equals total output quantity after normalization, with rejected rows separately reported.
 
 These invariants are targets to be approved; do not impose them if they conflict with the owner's operational policy.
+
+
+## 12. Date-, group-, attendance- and jig-aware scheduling
+
+The owner has supplied a new target rule set covering:
+- Today/Tomorrow/Whole-week selection and Friday–Thursday seven-day production week.
+- Group-specific plan imports.
+- Company holidays and per-employee overtime.
+- Leave exclusion using `thutuchanhchinh`.
+- Product worker-count rules based on columns B/C/L/N and physical jig-set concurrency based on column O in `dulieubanga.xlsx`.
+
+The complete source-derived requirements, exact thresholds, hard-constraint order and unresolved decisions are maintained in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. That document is authoritative for this feature scope.
+
+Do not merge these target rules into descriptions of the current AutoDispatch behavior. Current `AutoDispatchService` is still a six-day, in-memory algorithm and does not yet apply holiday, overtime, leave or jig-resource constraints.
