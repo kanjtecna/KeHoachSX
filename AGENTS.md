@@ -199,3 +199,14 @@ The owner-defined target behavior is:
 - Ranking scores (skill, workload, continuity) may rank only workers who already satisfy hard constraints. They must never override group eligibility, leave, holiday access, hours or jig capacity.
 
 Current repository code does not yet implement the complete dated calendar, weekly-pool distribution, group-specific import, holiday/overtime, leave or jig-resource model, nor the new Excel export. Do not describe these target rules as implemented until code and tests prove them. Remaining decisions are listed in `docs/ai/KNOWN_GAPS.md`; stop and ask the owner before making behavior-changing assumptions.
+
+### Efficiency-based daily standard-work target
+
+- Read employee efficiency from `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN`; the current SQL query selects the row with greatest `No` for each employee. A stored value such as `45` is 45 percent.
+- For each employee/date, calculate `DailyTargetStandardMinutes = DailyAvailableClockMinutes * EfficiencyPercent / 100`.
+- For each Lot, calculate actual timeline occupancy as `TaskSystemStandardMinutes / (EfficiencyPercent / 100)`. Keep this separate from the system standard-minute credit.
+- Schedule toward the per-person/per-date standard-minute target while never exceeding actual available clock minutes. Do not exceed capacity or split an indivisible Lot without an owner-approved rule.
+- Preserve the current 20% fallback only as an explicit fallback with a warning. Do not describe fallback efficiency as measured performance.
+- The Oracle standard-time adapter calls `LayGioCongHeThongAsync(productCode, "1523")`; preserve the documented standard-time source priority and verify the `GioCongHT` unit before changing quantity arithmetic.
+- The existing `GetTaskDuration` conversion is not proof that daily target optimization is implemented. Track assigned standard minutes and actual clock minutes separately, add date-specific target selection and deterministic tests, and do not use the parser's legacy 30% placeholder as the final worker-specific duration.
+- See `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` section 11 and `docs/ai/KNOWN_GAPS.md` section 10.
