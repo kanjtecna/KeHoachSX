@@ -72,6 +72,9 @@ Mỗi nhiệm vụ liên quan những nội dung trên phải khảo sát và x�
 - Default view Today, with Today/Tomorrow/Whole-week scopes.
 - A production week is Friday through the following Thursday, seven dates.
 - Users import product plans independently per assembly group.
+- In a source group plan, column C is the total required quantity for a product. In the result, `Số lượng` is the individual employee allocation; summing it by product and employee department must exactly recover the source total. Individual allocations may differ.
+- Keep the separate normalized summary `SUM(Số lượng / Số người làm)` distinct from raw production quantity.
+- Prefer one employee department per product, but controlled sharing with a second department is allowed when needed; preserve each source group's quantity.
 - Working availability is date-specific and includes company holidays, employee overtime and approved leave.
 - On normal days, valid overtime extends the regular work timeline; on holidays, only employees with valid overtime may work and only for their registered overtime hours.
 - Jig/fixture category and physical set count from `dulieubanga.xlsx` affect the allowed worker/team arrangement and concurrency.
