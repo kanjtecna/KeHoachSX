@@ -64,7 +64,14 @@ Do not silently change this behavior.
 - SQL query uses LTRIM/RTRIM in join/filter columns; index/performance impact should be measured before changing.
 - The product-to-worker CSV's delimiter/format is assumed by custom parser. Validate source exports with representative real data (sanitized).
 
-## 7. Project/branch/build concerns
+## 7. Oracle read-only verification
+
+- KeHoachSX's own adapter calls external JtecShare service `ILayGioCongHeThong`; the external implementation is not included in this repository.
+- Before declaring Oracle read-only end-to-end, inspect that service's implementation and confirm it only executes SELECT/read operations.
+- Confirm the configured Oracle database principal has SELECT-only grants for the objects needed by the application, with no DML/DDL privileges.
+- AI-generated code must not add any Oracle write path, even if a user story asks for one. Any DBA data/schema correction must remain a separately authorized manual operation.
+
+## 8. Project/branch/build concerns
 
 - Solution references JtecShare projects outside this repository; full build may fail if local relative paths are absent.
 - App targets `net8.0-windows`; API/Infrastructure/Core target net8.0.
