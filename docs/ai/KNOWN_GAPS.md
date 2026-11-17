@@ -109,17 +109,18 @@ The owner has confirmed the primary scheduling rules. Do not re-open these settl
 - For category J, `N >= 2` is a precondition, not a headcount cap; C thresholds are 200/300/400 for 2/3/4 workers.
 - Column O limits concurrent independent teams using physical jig sets; multiple workers within one team share one jig set.
 - Plan persistence is deferred; assignment result is exported to Excel.
+- Re-importing the same group and same date/week replaces that exact plan scope; it does not append.
+- Missing jig metadata means skip the jig constraint for that product, continue scheduling under other constraints, and show an informational warning.
+- If capacity is insufficient, leave remaining work unassigned and show a warning; do not force an over-capacity assignment.
 
 The following items still need confirmation or technical inspection before the relevant feature is implemented:
 
-1. **Group identification and import replacement:** is the selected group supplied by the UI or an explicit file column? What should happen if these conflict? Re-import into the same group/week or group/date: replace, append or ask?
-2. **Overtime employee/group mapping:** does `Overtime.ID` exactly match `AssemblyWorker.WorkerId` / `NHANVIEN.UserName`? Must `Overtime.NHOM` match `NHANVIEN.GROUPBOPHAN`, or is it informational?
-3. **Overtime data formats and duplicates:** inspect real examples of `Overtime.date` and `SOGIO`; can there be multiple records for one employee/date? If so, sum, choose latest or reject?
-4. **Holiday date parsing:** inspect the actual stored format of `nghile.date`. Recurrence is not required; each value is one holiday date.
-5. **Jig metadata fallback:** what should happen if L, N or O is blank, zero or invalid? The sample contains missing values; do not assume unlimited sets or invent a category.
-6. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
-7. **Weekly over-capacity policy:** if all seven days' available capacity cannot cover the imported weekly demand, should the scheduler leave work unassigned, show overload, or use another approved policy? Work must remain visible either way.
-8. **Excel export contract:** which columns/sheets/format are required? Should the workbook include unassigned tasks, overload warnings, daily timelines and jig usage?
-9. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
+1. **LR4 input group labels:** `LR4.xlsx` column B contains LR4, LR5, ..., LR13, while the target result's employee department values are LR1–LR4. What do LR5–LR13 represent, and how should they map (if at all) to employee department LR4?
+2. **Overtime duplicate conflicts:** duplicates are keyed by employee `ID + date` and must contribute only one value, never be summed. If duplicate rows for the same employee/date contain different `SOGIO`, should we keep the greatest `No` (latest inserted row), or use another authoritative field/rule? Until confirmed, flag conflicting values.
+3. **Overtime group field:** does `Overtime.NHOM` have to match `NHANVIEN.GROUPBOPHAN`, or is employee ID alone authoritative? ID mapping itself is confirmed.
+4. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
+5. **Team-size meaning in target workbook:** six product/team-sequence combinations have a mismatch between row count and `Số người làm`. Are those intentional partial rows, or is the target file missing employee rows / carrying an incorrect team-size value?
+6. **Excel export contract:** should the final export mirror the eight columns from `file_ketqua_phanchia.xlsx` exactly, and should it also include daily timeline, unassigned/overload warnings and jig warnings?
+7. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
 
 The full settled rules and current implementation gaps are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
