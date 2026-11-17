@@ -295,6 +295,9 @@ At minimum add deterministic automated tests for:
 - One-group import does not overwrite other groups.
 - The same product remains in one group when feasible; cross-group splitting uses no more than two groups by default and preserves each group's source quantity.
 - Every imported quantity is either scheduled or reported as unassigned/overloaded.
+- For each source product + group, sum the result's employee-level `Số lượng` by employee department and reconcile exactly to source column C.
+- Different employees may receive different quantities; source quantity conservation must hold without multiplying/dividing result `Số lượng` by `Số người làm`.
+- Keep the normalized `SUM(Số lượng / Số người làm)` metric separate from raw production quantity.
 - Each worker is excluded only on dates covered by a leave record with `TRANGTHAI <> 7`.
 - Leave exclusion blocks the whole date; partial-day fields do not shorten the exclusion in this phase.
 - NULL leave status is excluded by SQL inequality semantics.
