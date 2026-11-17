@@ -61,14 +61,14 @@
 - Default behavior is to keep all work for a product within one production group whenever that group has enough available capacity and eligible workers.
 - A product may be assigned to workers from **two different groups** when necessary to complete the plan or use available capacity more effectively.
 - This cross-group arrangement is an exception, not the default: minimize the number of groups per product and do not split across more than two groups without explicit owner approval.
-- Keep the source quantity attached to its originating group. When two groups share one product code, each group's allocated quantity must remain separately traceable; do not merge quantities and later redistribute them arbitrarily.
-- The assignment result must identify each worker's actual group and preserve the per-group quantities.
+- Keep each employee row's source quantity numerator and headcount metadata intact. When two departments share one product, attribute work to each department by summing `Số lượng / Số người làm` for employees in that department; do not call this normalized share a raw source-plan quantity.
+- The assignment result must identify each worker's actual department and preserve the department's normalized contribution.
 - The sample workbooks contain six product codes planned in two groups. This is an approved example of controlled sharing, not permission to spread every product across groups.
 
 [IMPLEMENTATION GUIDANCE]
 - Treat "same product code" and "same worker team" as different concepts. A product may have separate teams in two groups; a team may also contain workers from more than one group only when the chosen allocation requires that and the result preserves each group's source quantity.
-- Prefer a strong same-group-first optimization objective. Only introduce a second group when the one-group allocation cannot meet capacity/skill/workload constraints or a clear operational benefit is required.
-- Record/communicate why cross-group sharing was needed so it can be reviewed by the production manager.
+- Prefer a strong same-group-first optimization objective. Only introduce a second department when the one-department allocation cannot meet capacity/skill/workload constraints or a clear operational benefit is required.
+- Record/communicate why cross-department sharing was needed so it can be reviewed by the production manager.
 
 [REFERENCE WORKBOOK]
 - The latest consolidated workbook supersedes earlier standalone group-file snapshots for this example. Its LR1/LR2/LR3/LR4 sheets identify the employee department explicitly in column B.
@@ -294,7 +294,7 @@ At minimum add deterministic automated tests for:
 - Daily import does not overwrite other dates.
 - Re-importing the same group and same date/week replaces only that exact plan scope; it does not append or double quantities.
 - One-group import does not overwrite other groups.
-- The same product remains in one group when feasible; cross-group splitting uses no more than two groups by default and preserves each group's source quantity.
+- The same product remains in one department when feasible; cross-department splitting uses no more than two departments by default and preserves each department's normalized contribution.
 - Every imported quantity is either scheduled or reported as unassigned/overloaded.
 - For each product, calculate the product total as `SUM(Số lượng / Số người làm)` across all employee rows and match it to the product summary sheet.
 - For each product + employee department, calculate `SUM(Số lượng / Số người làm)` filtered by `Nhóm` and match it to the corresponding LR sheet.
