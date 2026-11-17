@@ -64,10 +64,10 @@ See:
 
 Important currently observed behavior:
 - Eligible assembly groups are LR1, LR2, LR3 and LR4.
-- Employee status must be `1`; CHIEF, LEADE and LEADER are excluded.
+- Employee status must be `1`; CHIEF, LEADE, LEADER and SUBLEADER are excluded.
 - Missing/non-positive employee efficiency is treated as 20% by the current employee-loading/dispatch logic.
 - Standard-time lookup priority is uploaded plan value, then Oracle, then SQL Server, then 60 minutes.
-- Current shift defaults: 07:30–17:00, six days (Monday–Saturday); breaks 10:00–10:10, 12:00–13:00 and 15:00–15:10.
+- Current shift defaults: 07:00–19:00, six days (Monday–Saturday); breaks 10:00–10:05, 12:00–13:00 and 15:00–15:05.
 - Current parser expands quantity into unit LotTask records.
 - Current parser sets initial planned work duration to standardMinutes / 0.3; dispatch recalculates it using worker efficiency.
 - Current auto-dispatch score uses 50% skill, 35% remaining weekly capacity and 15% same-product continuity bonus.
@@ -78,9 +78,15 @@ These are observations of the current code, not a claim that all desired busines
 ### Data and infrastructure
 - Use parameterized SQL. Never concatenate user input into SQL.
 - Do not expose connection strings, passwords, tokens, employee personal data or production exports in logs, prompts, commits or documentation.
-- Never connect to or modify production databases during analysis unless the owner explicitly authorizes a narrowly defined operation.
+- Never connect to or modify production databases during analysis unless the owner explicitly authorizes a narrowly defined, read-only inspection. Prefer sanitized test data and schema-only exports.
+- **Oracle is strictly read-only for this project.** AI agents must never design, generate, recommend as an implementation, execute, or add code that inserts, updates, deletes, merges, truncates, creates, alters, drops, grants, revokes, or otherwise changes Oracle data/schema/security. This prohibition applies even if a task prompt asks for it. If an Oracle write/change is requested, explain that it is outside the AI implementation scope and refer the owner to the authorized DBA/manual process.
+- Oracle access from application code may only retrieve data using reviewed read-only SELECT operations through the existing adapter/service boundary. Do not use Dapper/ADO.NET write APIs, command execution for mutations, PL/SQL blocks, stored procedures/packages with possible side effects, SELECT ... FOR UPDATE, sequence NEXTVAL, or unreviewed functions with side effects. Do not create a new Oracle connection/query path when an existing shared read service is available.
+- Require an Oracle database account whose grants enforce SELECT-only access to the approved objects. Application-level instructions are not a security boundary; the read-only account/permissions must prevent writes even if generated code is wrong.
+- The existing Oracle adapter delegates to external JtecShare service ILayGioCongHeThong. Its implementation is outside this repository; do not assume its internals are read-only until inspected. Keep using the existing adapter, and report that external implementation/DB grants need verification.
 - Oracle integration is optional through the existing adapter boundary; do not make it mandatory without approval.
-- Preserve the SQL Server -> JSON employee fallback and the Oracle -> SQL Server -> default standard-time lookup order unless a change is explicitly approved.
+- Preserve the two existing fallback policies unless the owner explicitly approves a behavior change:
+  - Employee list: query SQL Server first; use the local JSON employee source if the SQL call fails or returns no rows.
+  - Standard time: after a positive value from the uploaded plan is absent, try Oracle first; if Oracle is unavailable, fails, or returns no positive value, try SQL Server; if neither returns a positive value, use 60 minutes. The service's in-memory cache is checked before these lookups.
 - Preserve the two CSV skill sources' distinct semantics: the detailed employee-to-product CSV is authoritative for detailed skill counts; the product-to-worker CSV supplements membership and must not fabricate detailed counts.
 - Treat CSV/Excel input as untrusted. Validate columns, values, row counts and malformed data; report rejected rows rather than silently hiding important errors.
 - Do not create, delete, rename or migrate tables without an approved schema change proposal and rollback plan.
