@@ -94,3 +94,16 @@ Detailed rules, evidence labels and unresolved conditions are in `SCHEDULING_CAL
 Mỗi nhân viên/ngày có mục tiêu giờ công định mức riêng:
 `DailyTargetStandardMinutes = DailyAvailableClockMinutes * HieuSuat / 100`.
 Thuật toán phải theo dõi riêng standard minutes được giao và actual clock minutes bị chiếm. Chọn Lot để tổng standard minutes gần mục tiêu nhất nhưng không vượt thời gian thực tế có thể làm. Xem `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` mục 11 để biết công thức, ví dụ, điều kiện không overbook, khác biệt giờ nghỉ và các kiểm thử bắt buộc.
+
+## 9. Ưu tiên hoàn thành sản phẩm, duy trì nhóm và điều chỉnh phân công
+
+[OWNER TARGET — NOT YET IMPLEMENTED]
+- All product quantities in a Whole week plan are intended to be completed inside that seven-day Friday–Thursday shipment week.
+- Total standard workload per product = production quantity * system standard minutes per unit. Example `YT13E01726P1-02`: 50 * 263.26 = 13,163 standard minutes.
+- Per-person daily standard capacity = available clock minutes * individual efficiency / 100. Team capacity is the sum of actual participating members' daily capacities. The approximate 250 standard minutes/person/day is only an example for estimating headcount, not a global constant.
+- Prefer stable teams to work on the same product continuously and minimize frequent product changes.
+- Start large-total-standard-work products early and plan to finish them early enough to inspect/rework before shipment; the numerical recovery buffer remains undefined.
+- After automatic dispatch, allow reassigning workers/Lots, adding/removing team members and replacing an unexpectedly absent employee. Redistribute only remaining incomplete work and preserve completed output.
+- Manual changes must update capacity, efficiency-adjusted target, actual timeline and completion/risk indicators, and remain pinned across an Auto Dispatch rerun unless explicitly reset.
+
+Current code does not yet support this end-to-end. `LotTask` has one assigned worker ID; the UI supports moving a Lot to one other worker only, not managing a multi-worker team. The model does not track actual completed quantity/progress for partial-Lot recovery. See scheduling specification section 12 and known gaps.
