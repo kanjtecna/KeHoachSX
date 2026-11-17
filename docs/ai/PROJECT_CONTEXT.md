@@ -97,6 +97,14 @@ Thuật toán phải theo dõi riêng standard minutes được giao và actual 
 
 ## 9. Ưu tiên hoàn thành sản phẩm, duy trì nhóm và điều chỉnh phân công
 
+### Ý nghĩa đã xác nhận của cột O bàn gá
+
+- O là số bộ bàn gá, đồng thời là số tổ sản xuất độc lập tối đa có thể làm cùng mã hàng trong một thời điểm.
+- Mỗi tổ sử dụng một bộ bàn gá; số người trong tổ không bị giới hạn trực tiếp bởi O.
+- Ví dụ `YT13E01726P1-02`, O=3: có thể bố trí 3 tổ chạy đồng thời. Nếu mỗi tổ có 3 người thì tổng cộng 9 người, sử dụng 3 bộ gá và có thể làm 3 sản phẩm đồng thời (mỗi tổ/bộ gá phụ trách một sản phẩm tại một thời điểm theo ví dụ).
+- "Tổ sản xuất" trong quy tắc bàn gá không đồng nghĩa với phòng ban LR1–LR4. Quy tắc T/J xác định số người trong mỗi tổ; O xác định số tổ chạy đồng thời.
+
+
 [OWNER TARGET — NOT YET IMPLEMENTED]
 - All product quantities in a Whole week plan are intended to be completed inside that seven-day Friday–Thursday shipment week.
 - Total standard workload per product = production quantity * system standard minutes per unit. Example `YT13E01726P1-02`: 50 * 263.26 = 13,163 standard minutes.
