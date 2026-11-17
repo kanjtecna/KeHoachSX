@@ -245,11 +245,12 @@ apply the worker-count target derived from C:
 ### 6.5 Physical jig-set capacity — column O [OWNER REQUIREMENT]
 
 - Column O is the number of physical jig sets currently available for that product.
-- O=1 means only one independent team/work stream can use that product's jig at a time.
-- A team can contain multiple workers. For example, four workers collaborating on one product as one team share and consume **one** jig set, not four.
-- O does not limit the maximum number of workers in one team.
-- O=2 permits up to two independent teams/work streams on that product at the same time, provided the work is divided into separate tasks and all other constraints are met.
-- Each simultaneously active independent team using the product consumes one physical jig set. Do not double-book the same set over overlapping time intervals.
+- O=1 means only one independent production team/work stream can use that product's jig at a time.
+- A team can contain multiple workers. All members cooperating as one team on the product share and consume **one** jig set, not one set per worker.
+- O does not limit the number of workers inside one team. It limits the number of independent teams working on the product simultaneously.
+- O=2 permits up to two independent teams/work streams on that product at the same time; O=3 permits up to three. Each simultaneously active independent team consumes exactly one physical jig set. Do not double-book a set over overlapping time intervals.
+- [OWNER-CONFIRMED EXAMPLE] For product `YT13E01726P1-02`, column O=3 means three independent teams can work on this product at the same time. With three workers assigned to each team, the plan can place 3 teams × 3 workers = 9 workers on the product, use all three jig sets, and process up to three product units simultaneously (one active unit per team/jig, subject to the actual work method). This is three production teams, **not** three LR departments.
+- If the product requires a total of approximately 8–10 workers to meet its seven-day shipment target, O=3 supports organizing those workers into three parallel teams (nine workers in the example) rather than putting all workers into one oversized team or treating O as a nine-worker cap. Calculate the actual team size/capacity from each worker's efficiency and the applicable T/J rule.
 
 [REMAINING OPEN ITEMS]
 - Define the safe behavior when O=0, blank or non-numeric. Do not treat missing jig-set data as unlimited capacity or silently substitute O=1.
@@ -272,8 +273,8 @@ The future scheduler must evaluate a task against all of these dimensions:
 3. Worker is not on a qualifying whole-day leave on that date.
 4. Worker has positive availability on that date (normal shift and/or overtime record selected under the initial no-status-filter rule).
 5. If the date is a company holiday, the worker has a matching overtime record for that date and receives only the 08:00 + SOGIO window.
-6. Product T/J rules determine the required/allowed team size according to section 6.
-7. Physical jig-set count O limits the number of independent teams concurrently using that product, not the number of people inside a team.
+6. Product T/J rules and workload feasibility determine the number of workers assigned **per production team**.
+7. Physical jig-set count O determines the maximum number of independent production teams concurrently using that product. For example, O=3 allows three teams; if each team has three workers, nine employees can work on the product in parallel. Do not confuse a production team with an LR1–LR4 department.
 8. Skill, efficiency and workload ranking selects among eligible workers only; ranking must never override any hard constraint.
 9. The task must be represented on the correct dated timeline, including normal breaks and overtime boundaries.
 10. All imported product quantities must be accounted for; overload, missing metadata and unassigned work must remain visible.
@@ -580,7 +581,7 @@ AvailableStandardCapacity(product/team)
 - If selected workers have lower efficiency or fewer available days, their summed capacity is lower; the required headcount may increase, for example to around 10 in the owner's estimate. Do not hardcode 8 or 10: calculate it from each person's actual availability and efficiency.
 - Higher-efficiency and lower-efficiency employees contribute according to their individual capacities. Do not first average all percentages and apply that average to every worker. Adding a worker increases capacity only by that worker's own eligible available minutes multiplied by their own efficiency.
 - The staffing estimate is a feasibility check, not a promise. If the available team's capacity is below the product workload, show the precise deficit and the additional capacity/headcount needed; do not silently mark the product as completable.
-- Headcount/team sizing must also respect physical jig availability and the T/J metadata. The existing T/J rules provide worker-count targets (T: one or two; J: two/three/four under the documented C thresholds), but the owner has now supplied examples that can require 8–10 people for a high-workload product. Before implementation, determine whether T/J counts are baseline targets that may be increased for weekly feasibility, or strict bounds requiring multiple teams. Never exceed physical concurrent jig-set count O. See KNOWN_GAPS.md.
+- Headcount/team sizing must also respect physical jig availability and the T/J metadata. The existing T/J rules determine the worker count for a production team (T: one or two; J: two/three/four under the documented C thresholds). Column O independently determines how many such teams may run at once. For example, O=3 and three workers/team permit three concurrent teams (nine workers total). High workload is handled by multiple parallel teams up to O, not by treating O as a worker cap. Confirm any need to exceed the applicable T/J team-size rule before implementation. Never exceed physical concurrent jig-set count O. See KNOWN_GAPS.md.
 
 ### 12.3 Stable product ownership and low changeover
 
