@@ -81,3 +81,16 @@ Mỗi nhiệm vụ liên quan những nội dung trên phải khảo sát và x�
 - Jig/fixture category and physical set count from `dulieubanga.xlsx` affect the allowed worker/team arrangement and concurrency.
 
 Detailed rules, evidence labels and unresolved conditions are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. These are target requirements, not current implemented behavior. Current UI/algorithm still has a six-day in-memory model and must not be described as already supporting this calendar.
+
+## 8. Hiệu suất nhân viên và giờ công hệ thống
+
+[VERIFIED-CODE]
+- Hiệu suất nhân viên được lấy từ `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN.HIEUSUAT`, ghép theo `IDNHANVIEN` với `NHANVIEN.UserName`. SQL hiện lấy bản ghi có `No` lớn nhất và dùng giá trị dương như phần trăm; khi không có giá trị hợp lệ, hiện fallback 20%.
+- Giờ công hệ thống được bọc qua `OracleStandardTimeProvider`, gọi `ILayGioCongHeThong.LayGioCongHeThongAsync(productCode, "1523")`. `StandardTimeService` giữ thứ tự Oracle -> SQL Server `SANLUONGCAMLR.GIOCONG` -> mặc định 60.
+- Dòng kế hoạch có `GioCongDinhMuc > 0` được ưu tiên trước tra cứu nguồn ngoài.
+- `AutoDispatchService.GetTaskDuration` hiện quy đổi standard minutes thành thời gian chiếm lịch thực tế bằng cách chia cho `HieuSuat / 100`.
+
+[OWNER TARGET — NOT YET IMPLEMENTED END-TO-END]
+Mỗi nhân viên/ngày có mục tiêu giờ công định mức riêng:
+`DailyTargetStandardMinutes = DailyAvailableClockMinutes * HieuSuat / 100`.
+Thuật toán phải theo dõi riêng standard minutes được giao và actual clock minutes bị chiếm. Chọn Lot để tổng standard minutes gần mục tiêu nhất nhưng không vượt thời gian thực tế có thể làm. Xem `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` mục 11 để biết công thức, ví dụ, điều kiện không overbook, khác biệt giờ nghỉ và các kiểm thử bắt buộc.
