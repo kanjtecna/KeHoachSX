@@ -90,3 +90,42 @@ The skill matrix loads lazily on first use and is held in memory by `SkillMatrix
 - Any new file import must validate size, format, expected headers, row count, numeric bounds and duplicate handling.
 - For generated snapshots, add schema version, generated timestamp, source revision and checksum only after the owner approves the format.
 - Treat a missing/malformed source as an explicit diagnostic state. Do not silently switch to stale or incompatible data.
+
+
+## 7. Overtime — SQL Server `TA.dbo.Overtime` [OWNER-SUPPLIED SCHEMA]
+
+Relevant fields supplied:
+- `ID`: employee identifier (matching to `NHANVIEN.UserName` is assumed and must be confirmed).
+- `date`: overtime date stored as NVARCHAR; actual format must be inspected.
+- `SOGIO`: overtime hours, stored as NVARCHAR; parse/validation format must be confirmed.
+- `STATUS`, `QUANLYDUYET`, `GADUYET`: approval/status fields; valid/approved combination is not yet defined.
+- `NHOM`: group field; matching rule to employee group must be confirmed.
+
+Use only read-only parameterized SQL Server queries. For a normal day, valid overtime adds `SOGIO × 60` minutes to regular capacity and extends the timeline. For a company holiday, only the matching employee with a valid overtime record is eligible, and capacity is SOGIO hours only. Do not regard any arbitrary row as approved before status semantics are confirmed.
+
+## 8. Company holidays — SQL Server `TA.dbo.nghile` [OWNER-SUPPLIED SCHEMA]
+
+Relevant fields supplied: `id`, `repetition_type`, `date` (NVARCHAR), `holiday_id`, `createdAt`, `updatedAt`.
+
+Use read-only parameterized SQL Server queries. Actual date format, recurrence semantics and whether `holiday_id` joins to another master table must be inspected. Do not compare date strings lexicographically or invent recurrence rules.
+
+## 9. Leave — SQL Server `STOCKMANAGEMENT.dbo.thutuchanhchinh` [OWNER-SUPPLIED SCHEMA]
+
+Relevant fields supplied:
+- `ID`: employee identifier.
+- `STARTDATE`, `ENDDATE`: leave interval.
+- `TRANGTHAI`: NVARCHAR status; owner rule is `TRANGTHAI <> 7`.
+
+The initial rule excludes the matching employee on dates covered by a qualifying interval. The table also has time/half-day fields (`STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI`), but their behavior is not specified yet. Confirm NULL status and partial-day handling. Read-only queries only.
+
+## 10. Jig/fixture input — `dulieubanga.xlsx`
+
+The uploaded sample has one sheet `Sheet1`, 494 data rows and no header row; row 1 is a data row. Owner-defined positional mapping:
+- B: product code.
+- C: quantity/workload input to worker-count rules.
+- L: category flag T/J.
+- M: fixture description/identifier.
+- N: numeric condition in the T/J rules (business meaning needs confirmation).
+- O: number of physical jig sets.
+
+Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metadata must be reported, not silently defaulted. See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for exact worker-count thresholds and resource constraints.
