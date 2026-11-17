@@ -97,27 +97,29 @@ Do not silently change this behavior.
 14. Should JSON employee files be a fallback only, or should the application support offline operation from a versioned local snapshot?
 
 
-## 9. Calendar, overtime, leave and jig planning questions
+## 9. Remaining calendar, import, overtime and jig decisions
 
-The full new rule set is in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. The following points are blocking before production implementation:
+The owner has confirmed the primary scheduling rules. Do not re-open these settled decisions unless the owner changes them:
+- Whole-week file is one weekly demand pool for the selected group, automatically spread over Friday–Thursday.
+- Overtime begins at 17:00 on normal dates and 08:00 on holidays; `SOGIO` provides the overtime duration.
+- No approval-field filter is required in the first phase; do not filter by `STATUS`, `QUANLYDUYET` or `GADUYET` yet.
+- `nghile.date` contains one-off, non-recurring holidays.
+- `TRANGTHAI <> 7` means exclude the employee for the entire covered date; partial-day fields are ignored in this phase.
+- Category T can use one or two workers chosen by scheduling fit.
+- For category J, `N >= 2` is a precondition, not a headcount cap; C thresholds are 200/300/400 for 2/3/4 workers.
+- Column O limits concurrent independent teams using physical jig sets; multiple workers within one team share one jig set.
+- Plan persistence is deferred; assignment result is exported to Excel.
 
-1. **Week anchor:** when viewing a week, should it always be the Friday–Thursday week containing the currently selected date? (The written rule assumes yes.)
-2. **Weekly file format:** does a whole-week file contain an explicit date/day per product row, or is it one weekly pool for the scheduler to spread across seven days?
-3. **Group import:** is the group explicitly selected in the UI, derived from a file column, or both? If the file says another group, should import reject it?
-4. **Import replacement:** when re-importing the same group/date or group/week, should the app replace that exact scope, append, or detect duplicate product rows and ask?
-5. **Overtime approval:** which values/combinations of `STATUS`, `QUANLYDUYET`, `GADUYET` mean an approved overtime record that can be scheduled?
-6. **Overtime identity/group:** does `Overtime.ID` always equal `NHANVIEN.UserName`? Must `Overtime.NHOM` match `NHANVIEN.GROUPBOPHAN`?
-7. **Overtime formats/duplicates:** what are actual examples of `Overtime.date` and `SOGIO`? Can an employee have multiple records for one date; sum them, choose latest, or reject duplicates?
-8. **Overtime timeline:** on normal days, does overtime start immediately after 17:00? What start time applies on holidays? Are there overtime breaks that reduce usable SOGIO?
-9. **Holiday recurrence:** what real values appear in `nghile.repetition_type` and `date`? Does `holiday_id` reference another holiday master table?
-10. **Leave NULL status:** the literal SQL condition `TRANGTHAI <> '7'` excludes NULL rows. Should NULL be ignored or treated as a pending/active leave request?
-11. **Leave partial day:** should the first implementation block the full date based on STARTDATE/ENDDATE, or honor STARTTIME/ENDTIME/LOAITHOIGIAN/BUOINGHI?
-12. **T category:** for L=T, N in (2,3), C>50, what rule chooses one worker versus two?
-13. **J category:** for L=J and N>=2, what is the target worker count when C<200?
-14. **N meaning/cap:** does N place a maximum on worker count? What if N=2 and C>=400 implies four workers?
-15. **Jig/team model:** can multiple workers cooperate as one group using one jig set? Does O=2 permit two groups to work in parallel on one product?
-16. **Missing jig values:** what should happen when L, N or O is blank/zero/invalid? Current sample contains missing values.
-17. **Current workbook layout:** confirm production exports will continue to have no header row and keep fixed positional columns B/C/L/M/N/O.
-18. **Calendar time zone:** confirm the plant's business time zone and normal/holiday shift start/end. Current code defaults to 07:30–17:00 with 80 minutes breaks, but holiday overtime start time is not represented.
+The following items still need confirmation or technical inspection before the relevant feature is implemented:
 
-Do not make these decisions by guess. Use conservative diagnostics and ask the owner before enabling ambiguous scheduling behavior.
+1. **Group identification and import replacement:** is the selected group supplied by the UI or an explicit file column? What should happen if these conflict? Re-import into the same group/week or group/date: replace, append or ask?
+2. **Overtime employee/group mapping:** does `Overtime.ID` exactly match `AssemblyWorker.WorkerId` / `NHANVIEN.UserName`? Must `Overtime.NHOM` match `NHANVIEN.GROUPBOPHAN`, or is it informational?
+3. **Overtime data formats and duplicates:** inspect real examples of `Overtime.date` and `SOGIO`; can there be multiple records for one employee/date? If so, sum, choose latest or reject?
+4. **Holiday date parsing:** inspect the actual stored format of `nghile.date`. Recurrence is not required; each value is one holiday date.
+5. **Jig metadata fallback:** what should happen if L, N or O is blank, zero or invalid? The sample contains missing values; do not assume unlimited sets or invent a category.
+6. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
+7. **Weekly over-capacity policy:** if all seven days' available capacity cannot cover the imported weekly demand, should the scheduler leave work unassigned, show overload, or use another approved policy? Work must remain visible either way.
+8. **Excel export contract:** which columns/sheets/format are required? Should the workbook include unassigned tasks, overload warnings, daily timelines and jig usage?
+9. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
+
+The full settled rules and current implementation gaps are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
