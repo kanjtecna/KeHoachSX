@@ -74,13 +74,21 @@ Files under `doccuments/`:
 
 The skill matrix loads lazily on first use and is held in memory by `SkillMatrixService` for the service lifetime. No automatic file watcher/reload/versioning is evident in the inspected code.
 
-## 5. Uploaded weekly plans [CODE]
+## 5. Uploaded plans [CODE + OWNER TARGET]
 
+### Current parser behavior [CODE]
 - Excel: first worksheet, first used row header.
 - CSV: delimiter detected from the header (comma or semicolon).
 - Header normalization removes Vietnamese diacritics and detects product/quantity/lot/standard-time columns.
 - Parser skips blank product rows.
-- Reader does not establish a permanent persistence mechanism; UI's current upload and dispatch state must be inspected before making persistence claims.
+- The current reader/UI does not establish durable plan persistence.
+
+### Target whole-week behavior [OWNER REQUIREMENT]
+- In Whole week mode, one uploaded file is the complete weekly demand pool for the selected Friday–Thursday week.
+- Rows are not pre-assigned to individual weekdays; the scheduling engine distributes their product/Lot work over the seven dates using available employee/date capacity and the approved hard constraints.
+- Preserve group isolation: the file is associated with one explicitly selected/identified group. Do not silently treat it as a combined plan for all groups.
+- Daily modes continue to associate the imported rows with the selected calendar date.
+- Import replacement behavior for a repeated upload into the same group/week or group/date is still to be decided.
 
 ## 6. Security and reliability requirements
 
@@ -92,22 +100,26 @@ The skill matrix loads lazily on first use and is held in memory by `SkillMatrix
 - Treat a missing/malformed source as an explicit diagnostic state. Do not silently switch to stale or incompatible data.
 
 
-## 7. Overtime — SQL Server `TA.dbo.Overtime` [OWNER-SUPPLIED SCHEMA]
+## 7. Overtime — SQL Server `TA.dbo.Overtime` [OWNER-SUPPLIED SCHEMA + OWNER TARGET]
 
 Relevant fields supplied:
-- `ID`: employee identifier (matching to `NHANVIEN.UserName` is assumed and must be confirmed).
-- `date`: overtime date stored as NVARCHAR; actual format must be inspected.
-- `SOGIO`: overtime hours, stored as NVARCHAR; parse/validation format must be confirmed.
-- `STATUS`, `QUANLYDUYET`, `GADUYET`: approval/status fields; valid/approved combination is not yet defined.
-- `NHOM`: group field; matching rule to employee group must be confirmed.
+- `ID`: employee identifier; exact mapping to the application's `AssemblyWorker.WorkerId` / `NHANVIEN.UserName` must be verified.
+- `date`: overtime date stored as NVARCHAR; inspect the real format before parsing.
+- `SOGIO`: overtime duration in hours, stored as NVARCHAR; inspect numeric/decimal format before parsing.
+- `STATUS`, `QUANLYDUYET`, `GADUYET`: approval/status fields.
+- `NHOM`: group field; whether it must match the employee's group remains to be verified.
 
-Use only read-only parameterized SQL Server queries. For a normal day, valid overtime adds `SOGIO × 60` minutes to regular capacity and extends the timeline. For a company holiday, only the matching employee with a valid overtime record is eligible, and capacity is SOGIO hours only. Do not regard any arbitrary row as approved before status semantics are confirmed.
+Use read-only parameterized SQL Server queries only. For the initial phase, **do not add a filter** based on `STATUS`, `QUANLYDUYET` or `GADUYET`; use records returned by the current retrieval rule. The owner will define approval filtering later.
+- Normal working date: add `SOGIO × 60` minutes to the employee's regular capacity; overtime starts at **17:00**, immediately after the current normal shift end.
+- Company holiday: only the employee with a matching overtime record can work; capacity is **SOGIO × 60** minutes only, starting at **08:00**. Do not add a normal shift.
+- Treat `SOGIO` as the usable overtime duration in this phase; no separate overtime-break deduction has been specified.
+- Duplicate records for the same employee/date must be diagnosed until a sum/latest/reject policy is approved.
 
-## 8. Company holidays — SQL Server `TA.dbo.nghile` [OWNER-SUPPLIED SCHEMA]
+## 8. Company holidays — SQL Server `TA.dbo.nghile` [OWNER-SUPPLIED SCHEMA + OWNER TARGET]
 
 Relevant fields supplied: `id`, `repetition_type`, `date` (NVARCHAR), `holiday_id`, `createdAt`, `updatedAt`.
 
-Use read-only parameterized SQL Server queries. Actual date format, recurrence semantics and whether `holiday_id` joins to another master table must be inspected. Do not compare date strings lexicographically or invent recurrence rules.
+Each stored `date` value represents one specific holiday date and does **not** repeat. Use `date` as the authoritative one-off date; do not expand recurrence from `repetition_type` or `holiday_id`. Inspect the actual `date` format before parsing. Use read-only parameterized SQL Server queries only.
 
 ## 9. Leave — SQL Server `STOCKMANAGEMENT.dbo.thutuchanhchinh` [OWNER-SUPPLIED SCHEMA]
 
@@ -116,7 +128,7 @@ Relevant fields supplied:
 - `STARTDATE`, `ENDDATE`: leave interval.
 - `TRANGTHAI`: NVARCHAR status; owner rule is `TRANGTHAI <> 7`.
 
-The initial rule excludes the matching employee on dates covered by a qualifying interval. The table also has time/half-day fields (`STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI`), but their behavior is not specified yet. Confirm NULL status and partial-day handling. Read-only queries only.
+For each calendar date covered inclusively by `STARTDATE`–`ENDDATE`, exclude the matching employee for the **whole date** when `TRANGTHAI <> N'7'`. Ignore partial-day/time fields (`STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI`) in this phase. Under normal SQL NULL semantics, NULL status does not satisfy `<>` and is excluded from the result; do not add NULL rows unless the owner changes the rule. Use read-only queries only.
 
 ## 10. Jig/fixture input — `dulieubanga.xlsx`
 
@@ -125,7 +137,15 @@ The uploaded sample has one sheet `Sheet1`, 494 data rows and no header row; row
 - C: quantity/workload input to worker-count rules.
 - L: category flag T/J.
 - M: fixture description/identifier.
-- N: numeric condition in the T/J rules (business meaning needs confirmation).
-- O: number of physical jig sets.
+- N: numeric condition; for category J, `N >= 2` enables the worker-count rule and does not cap the resulting number of workers.
+- O: number of physical jig sets available for the product; it limits concurrently active independent teams/work streams, not workers inside one team.
 
-Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metadata must be reported, not silently defaulted. See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for exact worker-count thresholds and resource constraints.
+Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metadata must be reported, not silently defaulted. One team of multiple workers may share one jig set (for example, four workers working together on one product consume one set). See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for exact worker-count thresholds and jig concurrency rules.
+
+
+## 11. Plan output and persistence — current phase [OWNER REQUIREMENT]
+
+- Do not add database persistence or durable plan storage in the initial scheduling phase.
+- The in-memory assignment result can be exported to an Excel workbook after dispatch is complete.
+- Excel export is a file output only; it must not write plan data to the production database.
+- The exact workbook layout/columns and treatment of unassigned or overloaded work remain to be specified before export implementation.
