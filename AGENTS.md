@@ -211,3 +211,16 @@ Current repository code does not yet implement the complete dated calendar, week
 - The existing `GetTaskDuration` conversion is not proof that daily target optimization is implemented. Track assigned standard minutes and actual clock minutes separately, add date-specific target selection and deterministic tests, and do not use the parser's legacy 30% placeholder as the final worker-specific duration.
 - See `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` section 11 and `docs/ai/KNOWN_GAPS.md` section 10.
 - For a multi-worker team, do not credit the same Lot's standard minutes in full to every member or divide it equally without an owner-approved team-credit rule. The current Lot model has one `AssignedWorkerId`; do not pretend team-level accounting already exists.
+
+### Weekly shipment workload, product continuity and manual rebalancing
+
+- For each product, compute total workload once as `ProductQuantity * StandardMinutesPerUnit`; the owner's example uses 50 * 263.26 = 13,163 standard minutes for `YT13E01726P1-02`. The example defines the system standard time as minutes per product unit.
+- The selected seven-day Friday–Thursday plan is a shipment deadline. Check each product and the whole plan against the sum of real employee/date capacities before claiming completion.
+- Compute individual capacity as `AvailableClockMinutes * EfficiencyPercent / 100`; team capacity is the sum of members' actual individual capacity across the week. 250 standard minutes/person/day is only an estimate in the example, never a hardcoded constant.
+- Prefer stable employee/product ownership, keep the same crew on one product continuously where feasible, and minimize product switching.
+- Start products with the largest total standard workload early and plan early completion to leave inspection/rework time. Do not invent a fixed rework buffer.
+- The 8–10 person example must be reconciled with the existing T/J crew targets and jig concurrency O. Do not exceed physical jig capacity.
+- After dispatch, support reassignment, adding/removing team members and replacing an unexpectedly absent employee. Preserve quantity/workload exactly once, only reassign incomplete work, recompute all affected capacity/timeline/target values and keep manual overrides pinned across automatic reruns unless explicitly reset.
+- Current `LotTask` has one `AssignedWorkerId`; current UI only transfers a Lot to a single worker. Do not claim multi-member team editing or progress-aware absence replacement exists until implemented and tested.
+- If in-progress work has no recorded completed quantity, do not guess the remaining amount or reassign the full unit blindly.
+- See `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` sections 11–12 and `docs/ai/KNOWN_GAPS.md` section 11.
