@@ -1,0 +1,164 @@
+# KeHoachSX — Instructions for AI Coding Agents
+
+> This file is the mandatory entry point for ChatGPT, Gemini, GitHub Copilot, Codex, Claude Code and any other coding agent working in this repository.
+> Language for discussion and documentation: Vietnamese. Keep existing C# identifiers and API names in English/Vietnamese as already used by the codebase.
+
+## 1. Mission and authority
+
+KeHoachSX is a production-planning and assembly-worker dispatching application. The current repository is the source of truth for implemented behavior. The documents under `docs/ai/` explain the observed architecture and business rules.
+
+Priority when sources conflict:
+1. Explicitly approved instruction from the project owner in the current task.
+2. Actual code and tests on the target branch (describe behavior; do not silently change it).
+3. `docs/ai/BUSINESS_RULES.md` and approved ADRs.
+4. Existing `ARCHITECTURE.md`.
+5. Historical notes and comments.
+6. Agent assumptions (never treat as facts).
+
+A discrepancy must be reported. Do not silently choose one source.
+
+## 2. Mandatory workflow before changing code
+
+1. Read this file and relevant files in `docs/ai/`.
+2. Inspect the target branch, working tree, project references and all call sites of affected members.
+3. Separate:
+   - verified current implementation;
+   - approved business requirement;
+   - proposal;
+   - unresolved question.
+4. Explain the current flow and list files likely to change.
+5. State risks, compatibility concerns and tests.
+6. For behavior, algorithm, data contract, persistence, security, project-reference or database changes, propose a plan and wait for the owner's approval before implementation.
+7. Keep changes within the approved scope. Do not opportunistically refactor unrelated code.
+
+For a small, isolated typo or demonstrably behavior-preserving fix, implementation may proceed without a separate approval, but still inspect, test and summarize the diff.
+
+## 3. Project-specific technical boundaries
+
+Current solution projects:
+- `KeHoachSX.Core`: current domain/data models.
+- `KeHoachSX.Application`: use-case services and abstractions.
+- `KeHoachSX.Infrastructure`: Dapper/SQL Server repositories, Oracle adapter, JSON/CSV/Excel readers and DI composition.
+- `KeHoachSX.UI`: Blazor UI.
+- `KeHoachSX.App`: Windows Forms + Blazor Hybrid desktop host.
+- `KeHoachSX.Api`: API/module host integration point.
+- `JtecShare.*`: external shared projects referenced by the solution; inspect their actual code when available. Do not assume they are part of this repository.
+
+Intended dependency direction:
+- Core has no dependency on application, infrastructure or UI.
+- Application may depend on Core and owns application-facing abstractions.
+- Infrastructure implements Application abstractions and may depend on Core.
+- UI depends on Application/Core abstractions and must not access Dapper, SQL providers, Oracle providers or parse infrastructure files directly.
+- App is the desktop composition root and may wire UI, Application, Infrastructure and JtecShare.
+- Api is a host/composition point. Do not invent endpoints or claim the API is implemented without inspecting it.
+
+Do not create a new layer, repository, manager, factory, mediator, generic framework or project unless a concrete requirement justifies it and the owner approves it.
+
+## 4. Verified project conventions and business defaults
+
+See:
+- `docs/ai/ARCHITECTURE.md`
+- `docs/ai/BUSINESS_RULES.md`
+- `docs/ai/DATA_SOURCES.md`
+- `docs/ai/KNOWN_GAPS.md`
+
+Important currently observed behavior:
+- Eligible assembly groups are LR1, LR2, LR3 and LR4.
+- Employee status must be `1`; CHIEF, LEADE and LEADER are excluded.
+- Missing/non-positive employee efficiency is treated as 20% by the current employee-loading/dispatch logic.
+- Standard-time lookup priority is uploaded plan value, then Oracle, then SQL Server, then 60 minutes.
+- Current shift defaults: 07:30–17:00, six days (Monday–Saturday); breaks 10:00–10:10, 12:00–13:00 and 15:00–15:10.
+- Current parser expands quantity into unit LotTask records.
+- Current parser sets initial planned work duration to standardMinutes / 0.3; dispatch recalculates it using worker efficiency.
+- Current auto-dispatch score uses 50% skill, 35% remaining weekly capacity and 15% same-product continuity bonus.
+These are observations of the current code, not a claim that all desired business rules are implemented.
+
+## 5. Non-negotiable engineering rules
+
+### Data and infrastructure
+- Use parameterized SQL. Never concatenate user input into SQL.
+- Do not expose connection strings, passwords, tokens, employee personal data or production exports in logs, prompts, commits or documentation.
+- Never connect to or modify production databases during analysis unless the owner explicitly authorizes a narrowly defined operation.
+- Oracle integration is optional through the existing adapter boundary; do not make it mandatory without approval.
+- Preserve the SQL Server -> JSON employee fallback and the Oracle -> SQL Server -> default standard-time lookup order unless a change is explicitly approved.
+- Preserve the two CSV skill sources' distinct semantics: the detailed employee-to-product CSV is authoritative for detailed skill counts; the product-to-worker CSV supplements membership and must not fabricate detailed counts.
+- Treat CSV/Excel input as untrusted. Validate columns, values, row counts and malformed data; report rejected rows rather than silently hiding important errors.
+- Do not create, delete, rename or migrate tables without an approved schema change proposal and rollback plan.
+
+### Business logic
+- Never invent the meaning of fields or business rules.
+- Do not infer that one worker may be assigned multiple jigs, or that a product's jig count is known, unless the source provides it.
+- Do not claim continuity across days, leave substitution, jig constraints or high-efficiency pairing are enforced until code and tests prove it.
+- Do not change lot expansion, standard-time units, efficiency formulas, worker eligibility or scheduling priority without explicit approval.
+- Preserve a clear distinction between product quantity, Lot count, standard minutes and adjusted work minutes.
+- An unscheduled task must remain visible and be reported; never drop work silently.
+- A task must not be assigned twice. Any future parallel assignment algorithm must be deterministic and race-safe.
+
+### C# and architecture
+- Follow the target framework and nullable/implicit-using conventions of the affected project. Do not upgrade target frameworks or package versions as incidental cleanup.
+- Keep UI event handlers focused on presentation/orchestration; place scheduling and data rules in Application.
+- Keep SQL, Oracle access and file parsing in Infrastructure.
+- Reuse existing contracts/interfaces and DI registrations.
+- Use asynchronous APIs for I/O and propagate CancellationToken where existing contracts support it.
+- Do not run concurrent operations on the same DbContext/connection unless the implementation explicitly supports it.
+- Dispose streams, connections and other disposable resources.
+- Use explicit, meaningful names; avoid magic numbers. A behavior-changing constant must be documented and tested.
+- Do not introduce package dependencies without explaining why, alternatives, version compatibility and approval.
+
+## 6. UI rules
+
+- Preserve existing Blazor UI behavior and CSS isolation unless the task explicitly changes it.
+- Verify the desktop host's `wwwroot/index.html`, static assets and linked content when changing UI resources.
+- Do not move static assets between UI and App without checking how BlazorWebView resolves them.
+- Avoid unnecessary rerenders and expensive recomputation in Razor components.
+- Keep manual assignment behavior separate from automatic dispatch behavior and test both.
+- Do not change labels, layout or styling outside the requested area.
+
+## 7. Security-sensitive host behavior
+
+- Treat certificate-validation bypasses, insecure browser flags and remote image host exceptions as security-sensitive. Never broaden them as a workaround.
+- Do not log secrets or dump full employee records.
+- Do not add permissive CORS, authentication bypasses or API endpoints without approval.
+- Any API host work must define authentication, authorization, validation, error contracts and rate/abuse boundaries before production exposure.
+
+## 8. Required validation
+
+Run relevant checks from repository root when the environment supports them:
+```powershell
+dotnet restore .\KeHoachSX.sln
+dotnet build .\KeHoachSX.sln -c Debug
+dotnet build .\KeHoachSX.App\KeHoachSX.App.csproj -c Release
+dotnet test .\KeHoachSX.sln
+```
+
+Important:
+- Desktop target is currently `net8.0-windows`; build it on Windows with the required .NET SDK, WebView2 prerequisites and the external JtecShare project paths.
+- The solution references JtecShare projects outside this repository. If they are absent, state that full solution verification is blocked; do not report a successful build.
+- If there is no test project or tests are not available, say so and propose focused tests. Do not invent test results.
+- For scheduling changes, add deterministic tests for day capacity, breaks, efficiency, skill ranking, load balancing, product continuity, lot ordering and unassigned work.
+- For parser changes, test Excel and CSV, supported delimiters, headers, missing fields, invalid quantities, decimal formats, duplicate product rows and large inputs.
+- For performance changes, capture a baseline and compare measurements; do not claim faster code without evidence.
+
+## 9. Definition of done
+
+A task is complete only when:
+- actual behavior matches the approved acceptance criteria;
+- no unrelated files were changed;
+- build/test outcomes are reported truthfully;
+- relevant documentation/ADR is updated;
+- security and data risks are addressed;
+- remaining limitations and manual verification steps are stated;
+- the final response lists changed files and the exact validation commands/results.
+
+## 10. Required response format
+
+Every coding task report must include:
+1. **Hiện trạng đã kiểm tra** — concrete files/classes/methods.
+2. **Phương án** — minimal implementation and alternatives if material.
+3. **Phạm vi thay đổi** — exact files and layers.
+4. **Quy tắc nghiệp vụ bị ảnh hưởng** — explicit list.
+5. **Kiểm thử** — commands, results, and what was not run.
+6. **Rủi ro/cần xác nhận** — unresolved items.
+7. **Kết luận** — done / partial / blocked.
+
+Never say “optimized”, “fixed”, “secure” or “fully tested” without evidence.
