@@ -103,17 +103,17 @@ The skill matrix loads lazily on first use and is held in memory by `SkillMatrix
 ## 7. Overtime — SQL Server `TA.dbo.Overtime` [OWNER-SUPPLIED SCHEMA + OWNER TARGET]
 
 Relevant fields supplied:
-- `ID`: employee identifier; exact mapping to the application's `AssemblyWorker.WorkerId` / `NHANVIEN.UserName` must be verified.
-- `date`: overtime date stored as NVARCHAR; inspect the real format before parsing.
-- `SOGIO`: overtime duration in hours, stored as NVARCHAR; inspect numeric/decimal format before parsing.
-- `STATUS`, `QUANLYDUYET`, `GADUYET`: approval/status fields.
-- `NHOM`: group field; whether it must match the employee's group remains to be verified.
+- `ID`: employee identifier; owner confirms it always matches `NHANVIEN.UserName`.
+- `date`: overtime date stored as NVARCHAR; observed format is ISO `yyyy-MM-dd`.
+- `SOGIO`: overtime duration in hours, stored as NVARCHAR; observed decimal format is dot-separated (for example `"1.5"`). Parse with invariant decimal rules.
+- `STATUS`, `QUANLYDUYET`, `GADUYET`: do not filter these fields in the initial phase.
+- `NHOM`: group field, but matching/authorization semantics remain unconfirmed.
 
 Use read-only parameterized SQL Server queries only. For the initial phase, **do not add a filter** based on `STATUS`, `QUANLYDUYET` or `GADUYET`; use records returned by the current retrieval rule. The owner will define approval filtering later.
 - Normal working date: add `SOGIO × 60` minutes to the employee's regular capacity; overtime starts at **17:00**, immediately after the current normal shift end.
 - Company holiday: only the employee with a matching overtime record can work; capacity is **SOGIO × 60** minutes only, starting at **08:00**. Do not add a normal shift.
 - Treat `SOGIO` as the usable overtime duration in this phase; no separate overtime-break deduction has been specified.
-- Duplicate records for the same employee/date must be diagnosed until a sum/latest/reject policy is approved.
+- Multiple rows for the same normalized `ID + date` must contribute only one overtime value; never sum duplicates. Identical SOGIO duplicates may be collapsed; conflicting SOGIO values must be reported for review until a tie-breaker is approved.
 
 ## 8. Company holidays — SQL Server `TA.dbo.nghile` [OWNER-SUPPLIED SCHEMA + OWNER TARGET]
 
@@ -130,7 +130,19 @@ Relevant fields supplied:
 
 For each calendar date covered inclusively by `STARTDATE`–`ENDDATE`, exclude the matching employee for the **whole date** when `TRANGTHAI <> N'7'`. Ignore partial-day/time fields (`STARTTIME`, `ENDTIME`, `LOAITHOIGIAN`, `BUOINGHI`) in this phase. Under normal SQL NULL semantics, NULL status does not satisfy `<>` and is excluded from the result; do not add NULL rows unless the owner changes the rule. Use read-only queries only.
 
-## 10. Jig/fixture input — `dulieubanga.xlsx`
+## 10. Group plan import and expected result examples [OWNER-SUPPLIED WORKBOOKS]
+
+Inspected workbook structure:
+- Group input workbooks have no header row and use three columns: A = product code, B = group/work-cell label, C = requested quantity.
+- Re-importing the same group and same date/week scope replaces that exact group/scope; do not append.
+- LR1/LR2/LR3 column B contains the corresponding LR1/LR2/LR3 label. LR4.xlsx contains LR4 through LR13 labels in column B, so these labels must be clarified before being treated as employee departments.
+- The target assignment workbook columns are `UserName`, `FullName`, `Nhóm`, `Status`, `Mã sản phẩm`, `Số lượng`, `Số người làm`, `số thứ tự nhóm`.
+- Reconciliation: 43 unique products and 542 total quantity; output employee-group quantities match the input product/group quantities. Six products are planned across two groups.
+- Six team-sequence entries have a mismatch between employee row count and `Số người làm`; see `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
+
+Do not include employee personal data from the example workbooks in repository docs, prompts or test fixtures. Prefer anonymized IDs and names in automated tests.
+
+## 11. Jig/fixture input — `dulieubanga.xlsx`
 
 The uploaded sample has one sheet `Sheet1`, 494 data rows and no header row; row 1 is a data row. Owner-defined positional mapping:
 - B: product code.
@@ -143,7 +155,7 @@ The uploaded sample has one sheet `Sheet1`, 494 data rows and no header row; row
 Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metadata must be reported, not silently defaulted. One team of multiple workers may share one jig set (for example, four workers working together on one product consume one set). See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for exact worker-count thresholds and jig concurrency rules.
 
 
-## 11. Plan output and persistence — current phase [OWNER REQUIREMENT]
+## 12. Plan output and persistence — current phase [OWNER REQUIREMENT]
 
 - Do not add database persistence or durable plan storage in the initial scheduling phase.
 - The in-memory assignment result can be exported to an Excel workbook after dispatch is complete.
