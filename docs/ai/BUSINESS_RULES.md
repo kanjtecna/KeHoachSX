@@ -153,13 +153,13 @@ The repository's `doccuments/data.txt` states:
 
 These are business notes, not verified algorithm constraints. Before implementing them, owner must clarify:
 - Definition/units for “số dây cắt”, threshold for “ít/nhiều”, and whether quantity is per day, lot, or weekly total.
-- Whether jig count is input data, static product master data, or derived.
-- Whether a jig can serve multiple workers/groups simultaneously.
+- The jig count source for this requirement is column O in `dulieubanga.xlsx`. One team may contain multiple workers and share one jig set; O limits the number of independent teams using that product concurrently.
+- Whether and how a physical jig set is released during breaks and overnight/day boundaries.
 - Whether assignment is per product, per SEQ, per lot, or per operation/day.
 - Priority between skill expertise, efficiency balance, workload and jig availability.
 - What qualifies as “same worker continues tomorrow” and exceptions when absent.
 - Whether a replacement worker continues the same product task from remaining quantity or restarts a lot.
-- Which leave types and dates make a worker unavailable.
+- How unfinished work is handed over to a replacement worker when the originally assigned worker is absent on a later date.
 
 ## 11. Required invariants [TARGET — approve before implementing]
 
