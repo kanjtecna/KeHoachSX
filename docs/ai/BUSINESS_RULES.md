@@ -178,15 +178,19 @@ Recommended invariant candidates:
 These invariants are targets to be approved; do not impose them if they conflict with the owner's operational policy.
 
 
-## 12. Date-, group-, attendance- and jig-aware scheduling
+## 12. Date-, group-, attendance- and jig-aware scheduling [OWNER TARGET]
 
-The owner has supplied a new target rule set covering:
-- Today/Tomorrow/Whole-week selection and Friday–Thursday seven-day production week.
-- Group-specific plan imports.
-- Company holidays and per-employee overtime.
-- Leave exclusion using `thutuchanhchinh`.
-- Product worker-count rules based on columns B/C/L/N and physical jig-set concurrency based on column O in `dulieubanga.xlsx`.
+The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. Core decisions confirmed by the owner:
 
-The complete source-derived requirements, exact thresholds, hard-constraint order and unresolved decisions are maintained in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. That document is authoritative for this feature scope.
+- Calendar scopes: Today, Tomorrow and Whole week; production week is seven dates from Friday through the following Thursday.
+- A Whole week import is one weekly demand-pool file for the selected group. Its product/Lot work is distributed by the scheduler across all seven dates based on date-specific capacity; rows are not pre-assigned to weekdays.
+- On normal dates, overtime starts at 17:00 and adds `SOGIO` hours to the normal shift. On holidays, overtime starts at 08:00 and `SOGIO` is the only available duration.
+- In the initial phase, do not filter overtime rows by `STATUS`, `QUANLYDUYET` or `GADUYET`; approval filtering will be defined later.
+- Each `TA.dbo.nghile.date` value is one non-recurring holiday date.
+- A leave row with `TRANGTHAI <> 7` excludes the matching employee for the entire covered date. Partial-day fields are ignored in this phase; SQL NULL does not satisfy the inequality.
+- For category T (L=T, N in 2 or 3, C>50), the scheduler may choose one or two workers according to capacity and allocation fit, without inventing another C threshold.
+- For category J (L=J, N>=2), N is only the rule condition, not a worker-count cap: C>=400 => 4 workers; C>=300 => 3; C>=200 => 2. C<200 remains undefined.
+- Column O counts physical jig sets and limits concurrent independent teams/work streams for a product. Multiple workers cooperating as one team share one set; O is not a worker cap.
+- Do not implement plan persistence in this phase. Keep assignment state in memory and provide Excel export after dispatch; export layout still needs specification.
 
-Do not merge these target rules into descriptions of the current AutoDispatch behavior. Current `AutoDispatchService` is still a six-day, in-memory algorithm and does not yet apply holiday, overtime, leave or jig-resource constraints.
+These are owner-approved target requirements, **not evidence that current code already implements them**. Current `AutoDispatchService` remains a six-day in-memory algorithm and does not yet apply the complete dated calendar, overtime, leave or jig-resource constraints.
