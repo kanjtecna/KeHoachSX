@@ -204,3 +204,30 @@ The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_C
 - If weekly capacity is insufficient, keep excess work unassigned and warn.
 
 These are owner-approved target requirements, **not evidence that current code already implements them**. Current `AutoDispatchService` remains a six-day in-memory algorithm and does not yet apply the complete dated calendar, overtime, leave or jig-resource constraints.
+
+## 13. Per-employee efficiency target [OWNER REQUIREMENT — NEW]
+
+Each employee's efficiency is used to derive an individual daily target for **system standard minutes**:
+
+```
+DailyTargetStandardMinutes
+    = DailyAvailableClockMinutes * (HieuSuatPercent / 100)
+```
+
+For a worker with 8 net usable normal hours plus 1.5 usable overtime hours and 45% efficiency:
+- Available clock time = 570 minutes.
+- Target system standard work = 256.5 minutes.
+
+The standard-minute value for a Lot comes from the positive plan `GioCongDinhMuc` when supplied; otherwise the current lookup order is Oracle `LayGioCongHeThong` -> SQL Server `SANLUONGCAMLR.GIOCONG` -> default. The current Oracle adapter passes process code `1523` and reads `GioCongHT`.
+
+Keep the measures separate:
+- Standard minutes credited to a worker = sum of the assigned Lot's system standard-minute values.
+- Actual clock duration occupied by a Lot = its system standard minutes / (worker efficiency / 100).
+- Dispatch should get each worker/date's assigned standard-minute total as close as feasible to the daily standard-minute target while staying within actual available clock time.
+- Do not overbook actual clock time, silently exceed the target, or split an indivisible Lot without an approved rule.
+- Do not apply the efficiency percentage twice. Do not use the parser's legacy 30% placeholder as the final worker-specific duration.
+- Preserve decimal precision until display/export.
+
+The example assumes eight hours are net usable normal work minutes after breaks. The currently observed `ShiftConfig` default yields 490 net minutes (07:30–17:00 less 80 minutes of breaks), so the date-specific capacity must come from the real shift/attendance configuration; do not hardcode the example's 570 minutes.
+
+This is an owner-approved target rule, **not yet implemented end-to-end**. See sections 11 and 11.4–11.6 of `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for code evidence, source priority, unit cautions and required tests.
