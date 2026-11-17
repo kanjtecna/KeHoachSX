@@ -184,7 +184,7 @@ The owner-defined target behavior is:
 - Fractional department contributions are intentional when employees from two departments share a product. Preserve precision and do not round each row/group contribution before aggregation.
 - If `Số người làm` is blank, zero, negative or invalid, flag the row and do not divide by it.
 - Preserve `Số người làm` and `số thứ tự nhóm`. Do not assume product + sequence alone reconstructs a unique team or overwrite headcount based only on row counts.
-- Eligible employees normally come from the plan's group. Keep product work in one group by default; permit a second group only when necessary, preserve each group's source quantity, and use no more than two groups per product unless explicitly approved.
+- Eligible employees normally come from the plan's group. Keep product work in one group by default; permit a second group only when necessary, preserve each department's normalized contribution computed from `Số lượng / Số người làm`, and use no more than two groups per product unless explicitly approved.
 - Worker availability is evaluated per employee per date, not as one uniform weekly capacity.
 - On normal dates, use overtime records without a new status/approval filter in the first phase; overtime starts at 17:00 and adds SOGIO hours to normal capacity.
 - On a company holiday, only employees with a matching overtime record may work; overtime starts at 08:00 and SOGIO hours are the entire available capacity (no normal shift). Do not filter STATUS/QUANLYDUYET/GADUYET in the initial phase.
