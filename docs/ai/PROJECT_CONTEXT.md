@@ -104,6 +104,6 @@ Thuật toán phải theo dõi riêng standard minutes được giao và actual 
 - Prefer stable teams to work on the same product continuously and minimize frequent product changes.
 - Start large-total-standard-work products early and plan to finish them early enough to inspect/rework before shipment; the numerical recovery buffer remains undefined.
 - After automatic dispatch, allow reassigning workers/Lots, adding/removing team members and replacing an unexpectedly absent employee. Redistribute only remaining incomplete work and preserve completed output.
-- Manual changes must update capacity, efficiency-adjusted target, actual timeline and completion/risk indicators, and remain pinned across an Auto Dispatch rerun unless explicitly reset.
+- Manual changes must update capacity, efficiency-adjusted target, actual timeline and completion/risk indicators. Mark them as owner-edited; before a later Auto Dispatch rerun, make preserve-versus-reset behavior explicit and never silently discard changes.
 
 Current code does not yet support this end-to-end. `LotTask` has one assigned worker ID; the UI supports moving a Lot to one other worker only, not managing a multi-worker team. The model does not track actual completed quantity/progress for partial-Lot recovery. See scheduling specification section 12 and known gaps.
