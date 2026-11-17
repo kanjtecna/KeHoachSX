@@ -166,7 +166,8 @@ The uploaded sample has one sheet `Sheet1`, 494 data rows and no header row; row
 - L: category flag T/J.
 - M: fixture description/identifier.
 - N: numeric condition; for category J, `N >= 2` enables the worker-count rule and does not cap the resulting number of workers.
-- O: number of physical jig sets available for the product; it limits concurrently active independent teams/work streams, not workers inside one team.
+- O: number of physical jig sets available for the product; it equals the maximum number of independent production teams that may work simultaneously, not the number of workers.
+- [OWNER-CONFIRMED EXAMPLE] For `YT13E01726P1-02`, O=3 permits three concurrent teams. With three workers per team, this is nine workers using three sets and working on up to three product units at once. A production team is distinct from an LR1–LR4 employee department.
 
 Do not skip row 1 as a header. Some sample rows have blank L/N/O; missing metadata must be reported, not silently defaulted. One team of multiple workers may share one jig set (for example, four workers working together on one product consume one set). See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` for exact worker-count thresholds and jig concurrency rules.
 
