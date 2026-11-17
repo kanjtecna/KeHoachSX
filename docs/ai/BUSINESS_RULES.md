@@ -263,7 +263,7 @@ This is an owner-approved target rule, **not yet implemented end-to-end**. See s
 - After Auto Dispatch, the user must be able to reassign workers/Lots, add or remove one or more members from a product team, and replace an unexpectedly absent employee.
 - Every change must recalculate employee/date loads, standard-minute targets, actual clock time, timeline, product completion estimate and warnings.
 - Only remaining incomplete work may be redistributed after an absence; completed output must not be duplicated or reassigned.
-- Mark manual assignments as pinned so later Auto Dispatch reruns do not overwrite them unless the user explicitly resets/unpins them.
+- Mark manual assignments as pinned/owner-edited. Before a later Auto Dispatch rerun, make preserve-versus-reset behavior explicit; never silently discard a manual change. Confirm the default policy before implementation.
 - Keep manual changes in the in-memory result and Excel export in the current phase; do not write assignments to production DB.
 
 [CURRENT CODE GAP]
