@@ -638,6 +638,6 @@ After automatic dispatch, the planner must be able to adjust the team and work a
 - Adding a worker changes team capacity by that worker's own per-date efficiency-adjusted availability.
 - Removing/replacing an absent worker redistributes only remaining incomplete work and preserves completed output.
 - A manual reassignment/add/remove operation updates all affected timelines, standard-minute balances, capacity checks and completion estimates.
-- Manual/pinned choices survive Auto Dispatch reruns unless the user explicitly resets them.
+- Manual/owner-edited choices are never silently discarded by a rerun. The UI must make preserve-versus-reset explicit; test both paths after the default policy is confirmed.
 - A manual edit cannot create duplicate unit assignments, lose work, exceed actual capacity or violate jig concurrency.
 - A partially completed Lot cannot be reassigned safely until completed quantity/progress is represented; test this boundary explicitly.
