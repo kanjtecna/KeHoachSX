@@ -64,13 +64,13 @@ See:
 
 Important currently observed behavior:
 - Eligible assembly groups are LR1, LR2, LR3 and LR4.
-- Employee status must be `1`; CHIEF, LEADE, LEADER and SUBLEADER are excluded.
+- Employee status must be `1`; CHIEF, LEADE and LEADER are excluded.
 - Missing/non-positive employee efficiency is treated as 20% by the current employee-loading/dispatch logic.
 - Standard-time lookup priority is uploaded plan value, then Oracle, then SQL Server, then 60 minutes.
-- Current shift defaults: 07:00–19:00, six days (Monday–Saturday); breaks 10:00–10:05, 12:00–13:00 and 15:00–15:05.
+- Current shift defaults: 07:30–17:00, six days (Monday–Saturday); breaks 10:00–10:10, 12:00–13:00 and 15:00–15:10.
 - Current parser expands quantity into unit LotTask records.
 - Current parser sets initial planned work duration to standardMinutes / 0.3; dispatch recalculates it using worker efficiency.
-- Current auto-dispatch score uses 50% skill, 35% remaining weekly capacity and 15% same-product continuity bonus.
+- Current auto-dispatch candidate ranking combines three weighted components: skill score × 0.50, remaining-weekly-capacity score × 0.35, and same-product continuity bonus × 0.15. The continuity bonus value is currently 0.35 when the worker's last assigned product matches; its maximum contribution to the total score is therefore 0.35 × 0.15 = 0.0525. This is a ranking preference, not a hard assignment rule. See `docs/ai/BUSINESS_RULES.md`.
 These are observations of the current code, not a claim that all desired business rules are implemented.
 
 ## 5. Non-negotiable engineering rules
@@ -168,3 +168,23 @@ Every coding task report must include:
 7. **Kết luận** — done / partial / blocked.
 
 Never say “optimized”, “fixed”, “secure” or “fully tested” without evidence.
+
+
+## 11. Mandatory rules for dated/group scheduling
+
+Before changing any calendar, import, dispatch, overtime, leave, holiday or jig logic, read `docs/ai/SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
+
+The owner-defined target behavior is:
+- Default application scope is the local current date (Today); the user can choose Tomorrow or Whole week.
+- Production week is seven consecutive dates, Friday through the following Thursday. Never use the old Monday–Saturday six-day model for the new production calendar.
+- Plan data is partitioned by both group and date/week. Importing one group or one day must not overwrite other groups/dates.
+- Eligible employees for a group are restricted to that group (current codes LR1–LR4) unless cross-group assignment is explicitly approved.
+- Worker availability is evaluated per employee per date, not as one uniform weekly capacity.
+- On normal working dates, approved employee-specific overtime adds SOGIO hours to normal capacity and must extend the timeline.
+- On a company holiday, only employees with valid approved overtime for that date may work; their capacity is SOGIO hours only, not a normal shift plus overtime.
+- Leave rows from `STOCKMANAGEMENT.dbo.thutuchanhchinh` where `TRANGTHAI <> 7` and the employee/date interval matches make the employee unavailable for the affected date, subject to the unresolved NULL/partial-day policies in the scheduling document.
+- Jig/fixture capacity is a hard resource constraint. Column O counts physical jig sets and limits simultaneous groups using a product; it is not automatically a worker headcount.
+- T/J and C/N worker-count rules must follow the exact supplied thresholds in the scheduling document. Do not invent missing thresholds or fallback values.
+- Ranking scores (skill, workload, continuity) may rank only workers who already satisfy hard constraints. They must never override group eligibility, leave, holiday authorization, hours or jig capacity.
+
+Current repository code does not yet implement the complete dated calendar, group-specific import, holiday/overtime, leave or jig-resource model. Do not describe these target rules as implemented until code and tests prove them. Unresolved items are listed in `docs/ai/KNOWN_GAPS.md`; stop and ask the owner before making behavior-changing assumptions.
