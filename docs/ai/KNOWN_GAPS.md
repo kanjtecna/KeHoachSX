@@ -64,7 +64,14 @@ Do not silently change this behavior.
 - SQL query uses LTRIM/RTRIM in join/filter columns; index/performance impact should be measured before changing.
 - The product-to-worker CSV's delimiter/format is assumed by custom parser. Validate source exports with representative real data (sanitized).
 
-## 7. Project/branch/build concerns
+## 7. Oracle read-only verification
+
+- KeHoachSX's own adapter calls external JtecShare service `ILayGioCongHeThong`; the external implementation is not included in this repository.
+- Before declaring Oracle read-only end-to-end, inspect that service's implementation and confirm it only executes SELECT/read operations.
+- Confirm the configured Oracle database principal has SELECT-only grants for the objects needed by the application, with no DML/DDL privileges.
+- AI-generated code must not add any Oracle write path, even if a user story asks for one. Any DBA data/schema correction must remain a separately authorized manual operation.
+
+## 8. Project/branch/build concerns
 
 - Solution references JtecShare projects outside this repository; full build may fail if local relative paths are absent.
 - App targets `net8.0-windows`; API/Infrastructure/Core target net8.0.
@@ -88,3 +95,29 @@ Do not silently change this behavior.
 12. Must manual assignment survive rerunning Auto Dispatch?
 13. Is the API intended for other clients now, or only a planned host integration?
 14. Should JSON employee files be a fallback only, or should the application support offline operation from a versioned local snapshot?
+
+
+## 9. Calendar, overtime, leave and jig planning questions
+
+The full new rule set is in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. The following points are blocking before production implementation:
+
+1. **Week anchor:** when viewing a week, should it always be the Friday–Thursday week containing the currently selected date? (The written rule assumes yes.)
+2. **Weekly file format:** does a whole-week file contain an explicit date/day per product row, or is it one weekly pool for the scheduler to spread across seven days?
+3. **Group import:** is the group explicitly selected in the UI, derived from a file column, or both? If the file says another group, should import reject it?
+4. **Import replacement:** when re-importing the same group/date or group/week, should the app replace that exact scope, append, or detect duplicate product rows and ask?
+5. **Overtime approval:** which values/combinations of `STATUS`, `QUANLYDUYET`, `GADUYET` mean an approved overtime record that can be scheduled?
+6. **Overtime identity/group:** does `Overtime.ID` always equal `NHANVIEN.UserName`? Must `Overtime.NHOM` match `NHANVIEN.GROUPBOPHAN`?
+7. **Overtime formats/duplicates:** what are actual examples of `Overtime.date` and `SOGIO`? Can an employee have multiple records for one date; sum them, choose latest, or reject duplicates?
+8. **Overtime timeline:** on normal days, does overtime start immediately after 17:00? What start time applies on holidays? Are there overtime breaks that reduce usable SOGIO?
+9. **Holiday recurrence:** what real values appear in `nghile.repetition_type` and `date`? Does `holiday_id` reference another holiday master table?
+10. **Leave NULL status:** the literal SQL condition `TRANGTHAI <> '7'` excludes NULL rows. Should NULL be ignored or treated as a pending/active leave request?
+11. **Leave partial day:** should the first implementation block the full date based on STARTDATE/ENDDATE, or honor STARTTIME/ENDTIME/LOAITHOIGIAN/BUOINGHI?
+12. **T category:** for L=T, N in (2,3), C>50, what rule chooses one worker versus two?
+13. **J category:** for L=J and N>=2, what is the target worker count when C<200?
+14. **N meaning/cap:** does N place a maximum on worker count? What if N=2 and C>=400 implies four workers?
+15. **Jig/team model:** can multiple workers cooperate as one group using one jig set? Does O=2 permit two groups to work in parallel on one product?
+16. **Missing jig values:** what should happen when L, N or O is blank/zero/invalid? Current sample contains missing values.
+17. **Current workbook layout:** confirm production exports will continue to have no header row and keep fixed positional columns B/C/L/M/N/O.
+18. **Calendar time zone:** confirm the plant's business time zone and normal/holiday shift start/end. Current code defaults to 07:30–17:00 with 80 minutes breaks, but holiday overtime start time is not represented.
+
+Do not make these decisions by guess. Use conservative diagnostics and ask the owner before enabling ambiguous scheduling behavior.
