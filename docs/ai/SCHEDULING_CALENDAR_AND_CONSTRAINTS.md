@@ -442,3 +442,93 @@ For each row in this table, LR1+LR2+LR3+LR4 equals the product total. Do not rou
 All six sheets were inspected; their used cells contain stored values rather than live Excel formulas. Therefore, if the `kết quả` sheet is edited, the product summary and LR1–LR4 sheets must be regenerated/recalculated by the application. Do not assume the workbook will recalculate derived sheets automatically.
 
 The current workbook has 55 distinct product + `số thứ tự nhóm` pairs. The sequence/headcount metadata must be preserved, but the pair alone is not proven to be a complete unique team key. Do not automatically rewrite `Số người làm` based only on counting rows by product + sequence.
+
+## 11. Per-employee efficiency target and system standard minutes
+
+[OWNER REQUIREMENT — NEW DAILY TARGET]
+
+Each employee has an efficiency percentage in `STOCKMANAGEMENT.dbo.HIEUSUATNHANVIEN`. Use that employee-specific efficiency to determine how much **system standard work** should be assigned for each calendar date. Do not distribute only by equal headcount or treat the percentage as an arbitrary ranking score.
+
+### 11.1 Keep two time measures separate
+
+The scheduler must keep these measures distinct:
+
+- **Available clock/work minutes**: actual usable working time available to the employee on that date, after applicable breaks and availability rules. On a normal date this includes the normal shift plus valid overtime. On a holiday it includes only the valid overtime window.
+- **System standard minutes**: the work value obtained from the plan's positive `GioCongDinhMuc` or the standard-time lookup chain. The Oracle adapter calls `ILayGioCongHeThong.LayGioCongHeThongAsync(productCode, "1523")` and reads `GioCongHT`; the code currently treats the returned numeric value as minutes.
+
+For an employee and date:
+
+```
+DailyTargetStandardMinutes
+    = DailyAvailableClockMinutes * (EmployeeEfficiencyPercent / 100)
+```
+
+For an individual Lot assigned to that employee:
+
+```
+TaskActualClockMinutes
+    = TaskSystemStandardMinutes / (EmployeeEfficiencyPercent / 100)
+
+DailyAssignedStandardMinutes
+    = SUM(TaskSystemStandardMinutes for that employee/date)
+
+DailyAssignedClockMinutes
+    = SUM(TaskActualClockMinutes for that employee/date)
+```
+
+The target is expressed in **system standard minutes**, not clock minutes. Do not multiply each task's standard minutes by efficiency and then also divide by efficiency for timeline duration; that would apply the percentage twice or mix units.
+
+### 11.2 Owner's numerical example
+
+If the employee has 8 hours of usable normal work and 1.5 hours of usable overtime:
+
+- Available clock minutes = `8 * 60 + 1.5 * 60 = 570`.
+- Employee efficiency = 45%.
+- Daily standard-work target = `570 * 45 / 100 = 256.5` standard minutes.
+
+If a Lot has 45 system standard minutes, its expected clock duration for this employee is `45 / 0.45 = 100` minutes. Assigning 256.5 standard minutes at 45% efficiency corresponds to 570 clock minutes.
+
+This example assumes the stated eight normal hours are **net usable work minutes after breaks**. Do not hardcode 570 as every employee's daily capacity; derive availability from that date's shift, breaks, overtime and holiday/leave rules.
+
+### 11.3 Dispatch objective and hard limits
+
+- Calculate a separate daily target for each employee/date using that employee's efficiency and that date's usable clock minutes. Overtime therefore increases both available clock minutes and the standard-work target for that date.
+- While ranking feasible assignments, prefer the employee/date whose remaining standard-work target can accept the Lot and whose resulting total `DailyAssignedStandardMinutes` is closest to `DailyTargetStandardMinutes`.
+- Treat the standard-work target and actual clock availability consistently: assigned standard minutes must not imply actual clock duration beyond the employee's usable minutes.
+- The target is an allocation objective, not permission to overbook. Never assign more actual clock minutes than the employee has available; never silently exceed the date's target to make the result look full.
+- If Lot tasks are indivisible, choose the closest feasible combination without exceeding available clock time. Do not split a Lot or invent a partial-Lot rule unless the owner explicitly approves it. If no remaining Lot fits, leave the remainder visible as unused capacity and keep unassigned work visible.
+- In a Whole-week plan, calculate the target independently for each employee/date, then sum daily target values for reporting. Do not replace date-specific overtime/holiday availability with one uniform weekly target.
+- Use the employee's percentage as a percentage value: `45` means 45%, and the calculation divides by 100. Preserve decimal precision; round only for display.
+- When the performance value is missing or non-positive, preserve the current 20% fallback only as an explicit fallback and surface a warning that the target was calculated using fallback efficiency. Do not present it as a measured employee efficiency.
+- Do not use the parser's legacy `ThoiGianThucTe = standardMinutes / 0.3` value as the employee-specific final duration. Recalculate actual clock duration using the assigned employee's efficiency. `GioCongDinhMuc` remains the standard-minute value for the target calculation.
+
+### 11.4 Existing code versus required behavior
+
+[VERIFIED-CODE]
+- `SqlAssemblyEmployeeRepository` reads `HIEUSUATNHANVIEN.HIEUSUAT` for the employee ID, takes `TOP (1)` ordered by `No DESC`, parses it as a positive percentage and currently falls back to 20 when missing/non-positive.
+- `JsonAssemblyEmployeeSource` also reads `HIEUSUATNHANVIEN.json`; its current implementation assigns values in file iteration order and does not explicitly sort by `No`.
+- `OracleStandardTimeProvider` calls `LayGioCongHeThongAsync(productCode, "1523")` and parses `GioCongHT`. `StandardTimeService` uses the priority Oracle -> SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR.GIOCONG` -> default 60 minutes.
+- `WeeklyPlanParserService` gives a positive standard-time value in the uploaded plan precedence over the lookup chain; otherwise it queries `IStandardTimeService`.
+- `AutoDispatchService.GetTaskDuration` already calculates an assigned Lot's clock duration as standard minutes divided by `HieuSuat / 100`.
+
+[NOT YET IMPLEMENTED]
+The current dispatch algorithm does not explicitly calculate or optimize `DailyTargetStandardMinutes` per employee/date. Its workload score and capacity tracking use `ThoiGianThucTe` (clock duration); it does not separately track the sum of system standard minutes against each person's efficiency target. The current six-day `ShiftConfig` also does not yet represent the full date-specific overtime/holiday model. Do not claim this new target is implemented until the model, dispatch algorithm and tests cover both time measures.
+
+### 11.5 Unit and availability caution
+
+The adapter's method/property names and model comments imply that `GioCongHT` is a standard-minute value, but the external JtecShare implementation is outside this repository and its exact unit (per product unit, per Lot, or another basis) has not been independently verified. Confirm that unit before using these values in production allocation. Do not multiply by plan quantity again if the parser has already expanded that quantity into separate Lot tasks.
+
+The current `ShiftConfig` defaults to 07:30–17:00 with 80 minutes of breaks, which gives 490 net minutes before overtime. The example above uses 480 net normal minutes plus 90 overtime minutes = 570. Confirm whether the example's eight hours are the intended net daily capacity or whether the production shift configuration should supply a different value; use actual configured date availability rather than assuming either value globally.
+
+### 11.6 Required tests
+
+- Efficiency 45 with 480 net normal minutes and 90 overtime minutes produces a daily target of 256.5 standard minutes.
+- A 45-standard-minute Lot at 45% efficiency consumes 100 actual clock minutes.
+- Sum of assigned standard minutes and sum of actual clock minutes are tracked separately for each employee/date.
+- A candidate cannot receive a Lot if its actual duration exceeds the remaining usable date capacity.
+- Lot selection approaches the standard-minute target without exceeding actual clock capacity; indivisible remainder stays visible.
+- Overtime increases the daily target by `SOGIO * 60 * efficiency / 100` on normal dates; on holidays, only overtime availability contributes.
+- Missing/non-positive efficiency uses the explicit 20% fallback and emits a warning.
+- A positive plan-level standard-minute value overrides standard-time lookup; otherwise Oracle -> SQL Server -> default priority is retained.
+- The 30% parser placeholder is not used as final employee-specific duration during dispatch.
+- Test 490 net normal minutes + 90 overtime minutes separately from the 480 + 90 example so shift-configuration changes cannot be hidden.
