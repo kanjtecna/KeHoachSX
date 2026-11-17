@@ -51,9 +51,11 @@
 - Do not infer the file's group or date from its filename. Use explicit UI selection or a verified column/mapping.
 - Duplicate import/replacement policy within the exact same group/date or group/week remains an open decision (see `KNOWN_GAPS.md`).
 
-[OPEN]
-- The exact Excel/CSV layout for a whole-week import has not yet been supplied. Do not invent a date column or assume every row is a weekly pool until the owner confirms whether products are explicitly assigned to dates or the algorithm distributes a weekly pool across the seven dates.
-- Confirm whether group is selected in UI or read from the file. If both exist, define mismatch handling.
+[OWNER REQUIREMENT — CONFIRMED]
+- In Whole week mode, one uploaded file contains the complete product demand for the selected production week. The file is a **weekly pool**, not a file with manually assigned dates: the scheduling engine distributes its product/Lot work across all seven Friday–Thursday dates according to employee/date capacity and the hard constraints in this document.
+- Do not require the owner to split that weekly file into seven daily files or pre-assign each row to a weekday.
+- The earlier group-isolation requirement remains in force: the weekly import belongs to one explicitly identified production group. It is not implicitly a combined file for LR1–LR4. The UI-versus-file mechanism for identifying the group is still open.
+- The scheduler must account for all imported quantities. It must expose any work that cannot fit within the seven-day capacity; it must not silently drop or falsely mark it completed.
 
 ## 2. Daily availability and capacity model
 
@@ -280,3 +282,16 @@ At minimum add deterministic automated tests for:
 - Manual reassignment cannot bypass group, leave, holiday/overtime or jig constraints.
 
 Do not mark the feature complete until the open business questions affecting these tests have been answered and accepted by the owner.
+
+
+## 9. Plan persistence and Excel export
+
+[OWNER REQUIREMENT — CURRENT PHASE]
+- Do not implement database persistence or durable plan storage in this phase.
+- The completed assignment result may remain in the application's current in-memory state.
+- After dispatch/assignment is complete, the user must be able to export the resulting plan to an Excel file.
+- Do not claim the plan is saved permanently. Closing/restarting the application may discard the in-memory assignment unless the user has exported it.
+- The Excel export is an output artifact; it does not write back to the production database.
+
+[REMAINING DESIGN DETAIL]
+- The exact Excel export columns, worksheet layout, formatting and whether it includes unassigned/overloaded tasks still need an owner-approved specification before implementing the export.
