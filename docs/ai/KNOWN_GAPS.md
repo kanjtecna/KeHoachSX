@@ -112,6 +112,8 @@ The owner has confirmed the primary scheduling rules. Do not re-open these settl
 - Re-importing the same group and same date/week replaces that exact plan scope; it does not append.
 - Missing jig metadata means skip the jig constraint for that product, continue scheduling under other constraints, and show an informational warning.
 - If capacity is insufficient, leave remaining work unassigned and show a warning; do not force an over-capacity assignment.
+- Original plan C is a source-group total. Result `Số lượng` is an individual employee allocation. Sum output `Số lượng` by product + employee department to reconcile the source quantity exactly.
+- The normalized quantity summary `SUM(Số lượng / Số người làm)` is a separate measure and must not replace original production quantity.
 
 The following items still need confirmation or technical inspection before the relevant feature is implemented:
 
@@ -119,8 +121,8 @@ The following items still need confirmation or technical inspection before the r
 2. **Overtime duplicate conflicts:** duplicates are keyed by employee `ID + date` and must contribute only one value, never be summed. If duplicate rows for the same employee/date contain different `SOGIO`, should we keep the greatest `No` (latest inserted row), or use another authoritative field/rule? Until confirmed, flag conflicting values.
 3. **Overtime group field:** does `Overtime.NHOM` have to match `NHANVIEN.GROUPBOPHAN`, or is employee ID alone authoritative? ID mapping itself is confirmed.
 4. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
-5. **Team-size meaning in target workbook:** six product/team-sequence combinations have a mismatch between row count and `Số người làm`. Are those intentional partial rows, or is the target file missing employee rows / carrying an incorrect team-size value?
-6. **Excel export contract:** should the final export mirror the eight columns from `file_ketqua_phanchia.xlsx` exactly, and should it also include daily timeline, unassigned/overload warnings and jig warnings?
+5. **Team grouping semantics:** the corrected file is the reference and its quantity allocation reconciles exactly. Clarify only how `Số người làm` and `số thứ tự nhóm` define a team when a product is shared across departments or sequence numbers; do not treat row counts by product+sequence as a data error by themselves.
+6. **Excel export contract:** use the corrected eight-column result layout as the baseline. Should export also include daily timeline, unassigned/overload warnings and jig warnings?
 7. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
 
 The full settled rules and current implementation gaps are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
