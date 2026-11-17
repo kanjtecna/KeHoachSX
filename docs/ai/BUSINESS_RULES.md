@@ -191,6 +191,10 @@ The approved target behavior is documented in full in `SCHEDULING_CALENDAR_AND_C
 - For category T (L=T, N in 2 or 3, C>50), the scheduler may choose one or two workers according to capacity and allocation fit, without inventing another C threshold.
 - For category J (L=J, N>=2), N is only the rule condition, not a worker-count cap: C>=400 => 4 workers; C>=300 => 3; C>=200 => 2. C<200 remains undefined.
 - Column O counts physical jig sets and limits concurrent independent teams/work streams for a product. Multiple workers cooperating as one team share one set; O is not a worker cap.
-- Do not implement plan persistence in this phase. Keep assignment state in memory and provide Excel export after dispatch; export layout still needs specification.
+- Do not implement plan persistence in this phase. Keep assignment state in memory and provide Excel export after dispatch; use the supplied eight-column target result as the baseline export contract, subject to confirmation about the six team-size anomalies.
+- Re-importing the same group and same date/week replaces only that exact scope; never append quantities.
+- Keep product work in one group by default. When necessary, allow at most two groups for one product, preserve each group's source quantity and make cross-group use an exception.
+- Missing jig metadata means skip that product's jig check with a warning, not drop the product.
+- If weekly capacity is insufficient, keep excess work unassigned and warn.
 
 These are owner-approved target requirements, **not evidence that current code already implements them**. Current `AutoDispatchService` remains a six-day in-memory algorithm and does not yet apply the complete dated calendar, overtime, leave or jig-resource constraints.
