@@ -65,3 +65,15 @@ Chưa xác minh được:
 - Test project và coverage thực tế.
 
 Mỗi nhiệm vụ liên quan những nội dung trên phải khảo sát và xác nhận trước.
+
+
+## 7. Target scheduling capabilities supplied by the owner (not implemented yet)
+
+- Default view Today, with Today/Tomorrow/Whole-week scopes.
+- A production week is Friday through the following Thursday, seven dates.
+- Users import product plans independently per assembly group.
+- Working availability is date-specific and includes company holidays, employee overtime and approved leave.
+- On normal days, valid overtime extends the regular work timeline; on holidays, only employees with valid overtime may work and only for their registered overtime hours.
+- Jig/fixture category and physical set count from `dulieubanga.xlsx` affect the allowed worker/team arrangement and concurrency.
+
+Detailed rules, evidence labels and unresolved conditions are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`. These are target requirements, not current implemented behavior. Current UI/algorithm still has a six-day in-memory model and must not be described as already supporting this calendar.
