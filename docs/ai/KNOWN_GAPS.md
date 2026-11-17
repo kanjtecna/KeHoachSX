@@ -112,17 +112,17 @@ The owner has confirmed the primary scheduling rules. Do not re-open these settl
 - Re-importing the same group and same date/week replaces that exact plan scope; it does not append.
 - Missing jig metadata means skip the jig constraint for that product, continue scheduling under other constraints, and show an informational warning.
 - If capacity is insufficient, leave remaining work unassigned and show a warning; do not force an over-capacity assignment.
-- Original plan C is a source-group total. Result `Số lượng` is an individual employee allocation. Sum output `Số lượng` by product + employee department to reconcile the source quantity exactly.
-- The normalized quantity summary `SUM(Số lượng / Số người làm)` is a separate measure and must not replace original production quantity.
+- In the latest consolidated six-sheet workbook, row contribution is `Số lượng / Số người làm`. Sum it by product for the product summary and by product + employee `Nhóm` for LR1–LR4 attribution.
+- Product summary total = 317; four department totals are LR1=42.833333, LR2=101.25, LR3=101, LR4=71.916667. Their sum is 317 within numeric tolerance.
+- Raw `Số lượng` sum across employee rows is 542 and is not the normalized production total. Previous standalone files are superseded for this sample.
 
 The following items still need confirmation or technical inspection before the relevant feature is implemented:
 
-1. **LR4 input group labels:** `LR4.xlsx` column B contains LR4, LR5, ..., LR13, while the target result's employee department values are LR1–LR4. What do LR5–LR13 represent, and how should they map (if at all) to employee department LR4?
-2. **Overtime duplicate conflicts:** duplicates are keyed by employee `ID + date` and must contribute only one value, never be summed. If duplicate rows for the same employee/date contain different `SOGIO`, should we keep the greatest `No` (latest inserted row), or use another authoritative field/rule? Until confirmed, flag conflicting values.
-3. **Overtime group field:** does `Overtime.NHOM` have to match `NHANVIEN.GROUPBOPHAN`, or is employee ID alone authoritative? ID mapping itself is confirmed.
-4. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
-5. **Team grouping semantics:** the corrected file is the reference and its quantity allocation reconciles exactly. Clarify only how `Số người làm` and `số thứ tự nhóm` define a team when a product is shared across departments or sequence numbers; do not treat row counts by product+sequence as a data error by themselves.
-6. **Excel export contract:** use the corrected eight-column result layout as the baseline. Should export also include daily timeline, unassigned/overload warnings and jig warnings?
-7. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
+1. **Overtime duplicate conflicts:** duplicates are keyed by employee `ID + date` and must contribute only one value, never be summed. If duplicate rows for the same employee/date contain different `SOGIO`, should we keep the greatest `No` (latest inserted row), or use another authoritative field/rule? Until confirmed, flag conflicting values.
+2. **Overtime group field:** does `Overtime.NHOM` have to match `NHANVIEN.GROUPBOPHAN`, or is employee ID alone authoritative? ID mapping itself is confirmed.
+3. **Jig reservation window:** does a physical set remain reserved during employee breaks and overnight/day boundaries, or can another team use it during those intervals?
+4. **Team grouping semantics:** the latest result's `Số người làm` is used in the row-contribution divisor, but `số thứ tự nhóm` alone is not proven to be a globally unique team key. Confirm the exact team-key semantics before implementing logic that reconstructs team membership; do not treat row-count mismatches under product+sequence alone as automatic data errors.
+5. **Excel export contract:** use the corrected eight-column result layout as the baseline. Should export also include daily timeline, unassigned/overload warnings and jig warnings?
+6. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
 
 The full settled rules and current implementation gaps are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
