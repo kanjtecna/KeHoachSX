@@ -1,0 +1,171 @@
+# Business Rules — Weekly Assembly Planning and Dispatch
+
+## 1. Evidence labels
+
+- **[CODE]**: behavior directly observed in source on baseline commit.
+- **[NOTE]**: rule stated in `doccuments/data.txt`; it is a business note but may not be implemented.
+- **[OPEN]**: requires owner confirmation.
+- **[TARGET]**: desired rule to be implemented only after owner approval.
+
+Never present NOTE/TARGET/OPEN as implemented code behavior.
+
+## 2. Key concepts
+
+| Term | Meaning evidenced in current model |
+|---|---|
+| Weekly plan | Uploaded CSV/Excel rows represented by `WeeklyPlanItem` |
+| Product code | `MaSanPham` |
+| Quantity | `SoLuong` from each plan row |
+| Lot | Unit task represented by `LotTask`; parser expands quantity into tasks |
+| Lot order | `TTLot` and display/name `SoLot` |
+| Standard time | `GioCongDinhMuc`, treated as minutes in comments |
+| Adjusted work duration | `ThoiGianThucTe`, adjusted by worker efficiency |
+| Worker | `AssemblyWorker`, identified by `WorkerId` |
+| Efficiency | `HieuSuat`, percentage |
+| Skill count | Number of historical times worker performed product code |
+| Jig/fixture | Mentioned in business notes; no structured jig property verified in current model |
+| Worker leave | Mentioned in business notes; absence model/source not verified |
+
+## 3. Employee eligibility [CODE]
+
+SQL repository filters:
+- `NHANVIEN.STATUS = '1'`.
+- `GROUPBOPHAN` is LR1, LR2, LR3 or LR4 (case/space normalized).
+- `LevelUser` is not CHIEF, LEADE or LEADER.
+- The returned fields include UserName, Fullname, GROUPBOPHAN and latest usable efficiency.
+
+JSON fallback applies the same active/group/level eligibility rules in Application service.
+
+Do not broaden the eligible groups or include excluded levels without approval.
+
+## 4. Efficiency [CODE]
+
+- SQL query uses the latest record by descending `HIEUSUATNHANVIEN.[No]`.
+- Non-positive/unparseable/missing efficiency falls back to 20.
+- JSON employee fallback joins efficiency by employee ID and also falls back to 20.
+- Dispatch duration formula:
+  `adjustedMinutes = baseMinutes / (efficiencyPercent / 100)`.
+- Example: base 30 minutes at 20% => 150 minutes; at 50% => 60 minutes.
+- The current `DispatchOptions.DefaultEfficiency` property is 100, but the current dispatch calculation does not read this option and itself uses 20 when worker efficiency <= 0. Do not rely on this option as active behavior.
+
+## 5. Weekly plan import [CODE]
+
+- Supported file extensions in reader: `.xlsx`, `.xls`, otherwise CSV path.
+- Excel uses the first worksheet and first used row as header.
+- CSV detects comma or semicolon from header, parses quoted fields and normalizes Vietnamese header text.
+- Header matching recognizes product, quantity, lot/sequence and standard-time fields; fallback columns are used when headers are not detected.
+- Product code must not be blank; blank product rows are skipped.
+- Invalid/missing quantity currently defaults to 1 in parser path; parser uses `Math.Max(1, quantity)`.
+- Missing lot label defaults to `01` or `L01` depending on input path.
+- Positive standard-time value from uploaded plan takes precedence over data source lookup.
+- Exact supported column semantics and duplicate-row business treatment should be confirmed before changing the template.
+
+## 6. Lot expansion and standard time [CODE]
+
+For each valid plan item:
+1. Determine standard minutes:
+   - use positive value from uploaded plan;
+   - otherwise query Oracle;
+   - otherwise query SQL Server;
+   - otherwise use 60 minutes.
+2. If quantity <= 1 after normalization, create one LotTask.
+3. If quantity > 1, create one LotTask per unit, with incremented lot label and sequential `TTLot`.
+4. Each created LotTask has `SoLuong = 1`.
+5. The parser initializes `ThoiGianThucTe = standardMinutes / 0.3`.
+6. During auto-dispatch, duration is recalculated using the assigned worker's efficiency.
+
+The unit “minutes” is inferred from model comments and calculations. If source spreadsheets use hours or another unit, confirm and normalize before changing.
+
+## 7. Standard-time source priority [CODE]
+
+`StandardTimeService` cache is checked first. On cache miss:
+1. Optional Oracle service via JtecShare, called with operation code `1523`.
+2. SQL Server `STOCKMANAGEMENT.dbo.SANLUONGCAMLR`, latest positive `GIOCONG` by `TIME`.
+3. Default 60 minutes.
+
+A positive uploaded plan standard time bypasses this lookup. Do not change this precedence without approval.
+
+## 8. Shift and breaks [CODE]
+
+Default `ShiftConfig`:
+- Start: 07:30.
+- End: 17:00.
+- Number of days: 6, intended Monday–Saturday.
+- Morning break: 10:00–10:10.
+- Lunch: 12:00–13:00.
+- Afternoon break: 15:00–15:10.
+
+Calculated:
+- Elapsed day = 570 minutes.
+- Breaks = 80 minutes.
+- Net daily capacity = 490 minutes.
+- Weekly per-worker capacity = 2,940 minutes.
+
+`CalculateChunks` splits task duration around break intervals. It may create a chunk extending beyond configured end time if remaining duration exceeds the shift; this behavior needs an explicit business decision and tests before changing.
+
+## 9. Current auto-dispatch algorithm [CODE]
+
+Current observed algorithm in `AutoDispatchService`:
+1. Clones workers and tasks into a result.
+2. Assigns a display color per product code (presentation metadata).
+3. Sets each worker daily and weekly capacities from ShiftConfig.
+4. Groups LotTasks by product and orders product groups descending by `lot count * first task ThoiGianThucTe`.
+5. Orders lots within each product by ascending `TTLot`.
+6. For each LotTask, computes base duration from positive `GioCongDinhMuc`, otherwise `ThoiGianThucTe`, otherwise 60.
+7. Calculates candidate worker score:
+   - skill score: exact product historical count, logarithmic formula capped at 1; if no exact count but same first-six-character product prefix exists, score 0.2;
+   - workload score: remaining weekly capacity ratio, floor at 0;
+   - continuity bonus: 0.35 if this worker's last assigned product is the current product.
+8. Total score = skill * 0.50 + workload * 0.35 + continuity * 0.15.
+9. If assignment would exceed worker weekly capacity, subtracts 2.0 from score.
+10. Tries candidates by descending score and days from day 0 upward, fitting within daily net capacity.
+11. If no candidate/day fits, assigns to highest-ranked candidate on that worker's least-loaded day, potentially exceeding capacity.
+12. Uses `GetTaskDuration` based on worker efficiency and calculates time chunks around breaks.
+
+Important limitations:
+- `DispatchOptions` flags are not visibly used in the current algorithm in the inspected implementation.
+- Current task ordering is LPT-like; it does not visibly implement Most Constrained First.
+- The continuity bonus is a scoring bonus within the in-memory run, not a persisted cross-day commitment.
+- No explicit leave/absence calendar is visible in the models inspected.
+- No explicit jig-count or jig-capacity input is visible in the current domain models.
+- No explicit “do not split the same product across workers” hard constraint is visible.
+- The algorithm's fallback can exceed weekly/daily capacity. This must be surfaced, not hidden.
+
+## 10. Additional business notes [NOTE — not fully implemented]
+
+The repository's `doccuments/data.txt` states:
+1. Pair workers with differing efficiencies in an alternating/balancing way for the same product; avoid putting two workers with similarly high efficiency on one product.
+2. Consider the number of jig/fixture sets for a product. If there are two sets, work can be split to another group; otherwise move remaining work to another day.
+3. If a worker starts a large SEQ/product quantity today, continue with the same worker tomorrow.
+4. Do not insert another product between days while the current product remains unfinished, unless a justified exception exists.
+5. If a person in a multi-person group or a worker continuing unfinished work will take leave the next day, reassign to another worker.
+6. A product with three TV jigs but a small number of cut wires should be assigned to one worker (at most two).
+7. A product with one jig and many cut wires should normally be assigned to one worker.
+8. A product with one jig but a large output quantity may require more workers.
+9. If efficiency is unavailable, use 20%.
+
+These are business notes, not verified algorithm constraints. Before implementing them, owner must clarify:
+- Definition/units for “số dây cắt”, threshold for “ít/nhiều”, and whether quantity is per day, lot, or weekly total.
+- Whether jig count is input data, static product master data, or derived.
+- Whether a jig can serve multiple workers/groups simultaneously.
+- Whether assignment is per product, per SEQ, per lot, or per operation/day.
+- Priority between skill expertise, efficiency balance, workload and jig availability.
+- What qualifies as “same worker continues tomorrow” and exceptions when absent.
+- Whether a replacement worker continues the same product task from remaining quantity or restarts a lot.
+- Which leave types and dates make a worker unavailable.
+
+## 11. Required invariants [TARGET — approve before implementing]
+
+Recommended invariant candidates:
+- Every valid imported quantity is accounted for exactly once; no Lot silently disappears or duplicates.
+- Each generated Lot has stable identity within the plan and unique order/label within the defined product/plan scope.
+- Assigned duration is non-negative and based on a clearly defined standard-time unit and efficiency.
+- A worker is never scheduled during configured breaks.
+- No worker is assigned while unavailable/absent.
+- Jig/fixture capacity is never exceeded once jig semantics are defined.
+- Daily/weekly over-capacity is explicitly flagged and not silently treated as a normal schedule.
+- Re-running dispatch with identical normalized inputs and configuration yields deterministic output.
+- Manual overrides are not silently overwritten by a subsequent automatic dispatch (persistence/override semantics need confirmation).
+- Total input quantity equals total output quantity after normalization, with rejected rows separately reported.
+
+These invariants are targets to be approved; do not impose them if they conflict with the owner's operational policy.
