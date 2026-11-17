@@ -92,7 +92,7 @@ Do not silently change this behavior.
 9. When a worker is absent on a later date, should unfinished assigned work be transferred to a replacement worker, and how?
 10. When an assigned worker is absent, can a replacement inherit the remaining task? Which skill/efficiency priorities apply?
 11. What happens when the whole weekly plan exceeds total available capacity?
-12. Must manual assignment survive rerunning Auto Dispatch?
+12. What should the UI's default preserve-versus-reset behavior be for owner-edited assignments before a subsequent Auto Dispatch rerun? See section 11, gap 7; never silently overwrite.
 13. Is the API intended for other clients now, or only a planned host integration?
 14. Should JSON employee files be a fallback only, or should the application support offline operation from a versioned local snapshot?
 
