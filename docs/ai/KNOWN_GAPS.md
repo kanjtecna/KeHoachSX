@@ -126,3 +126,12 @@ The following items still need confirmation or technical inspection before the r
 6. **Plant time zone/configuration:** confirm the configured business time zone if the deployment can run outside Vietnam; do not derive a business date from machine UTC implicitly.
 
 The full settled rules and current implementation gaps are in `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md`.
+
+## 10. Efficiency-target scheduling and standard-time validation
+
+1. **Standard-time unit/basis:** the current adapter reads `GioCongHT` from external `LayGioCongHeThongAsync(productCode, "1523")` and code comments treat it as minutes. Confirm whether the value is minutes per product unit, per Lot or another basis before finalizing quantity multiplication and the standard-minute target. The JtecShare implementation is outside this repository.
+2. **Normal shift minutes:** the new example assumes 480 net normal minutes + 90 overtime minutes = 570. The current default `ShiftConfig` instead computes 490 net minutes from 07:30–17:00 less 80 minutes of breaks; with 90 overtime minutes that gives 580. Confirm which is the intended production-day net availability. Keep the formula date-driven and do not hardcode 570.
+3. **Efficiency JSON ordering:** SQL selects the latest `HIEUSUATNHANVIEN` row by `No DESC`, but `JsonAssemblyEmployeeSource` currently takes values in JSON file order and does not use `No`. Define/ensure deterministic latest-record ordering in the offline JSON snapshot.
+4. **Fallback efficiency visibility:** current SQL and JSON employee loading use 20% for missing/non-positive efficiency. Confirm that the target scheduler should continue using 20% in all such cases; the new behavior should at minimum surface a warning and distinguish a fallback value from a measured value.
+
+The new target rule itself is owner-defined: assigned system standard minutes should approach each employee/date's `available clock minutes * efficiency / 100`, while actual clock duration per Lot remains `standard minutes / (efficiency / 100)`. See `SCHEDULING_CALENDAR_AND_CONSTRAINTS.md` section 11. The existing code has only the per-Lot clock-duration conversion; it does not yet track/optimize the daily standard-minute target.
