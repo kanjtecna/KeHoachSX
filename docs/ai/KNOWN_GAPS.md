@@ -87,9 +87,9 @@ Do not silently change this behavior.
 4. Is efficiency stored as percentage (e.g. 20) rather than ratio (0.2)? What range is valid?
 5. Is a worker allowed to work on more than one product per day?
 6. Does “keep the same worker tomorrow” apply to a whole product, a SEQ, a Lot, or remaining quantity?
-7. What data source defines number of jigs per product and cut-wire quantity?
+7. What is the source/meaning of cut-wire quantity, and what thresholds define few versus many? Jig count for this scheduling requirement comes from column O in `dulieubanga.xlsx`.
 8. What are the numeric thresholds for few/many wires?
-9. How are leave days and partial-day absence represented?
+9. When a worker is absent on a later date, should unfinished assigned work be transferred to a replacement worker, and how?
 10. When an assigned worker is absent, can a replacement inherit the remaining task? Which skill/efficiency priorities apply?
 11. What happens when the whole weekly plan exceeds total available capacity?
 12. Must manual assignment survive rerunning Auto Dispatch?
