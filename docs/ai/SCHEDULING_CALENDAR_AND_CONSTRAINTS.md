@@ -385,6 +385,11 @@ The corrected result contains 101 employee-allocation rows, 78 unique employee I
 
 For every one of the 49 source product/group combinations, the sum of employee-level `Số lượng` in the corrected result matches the original input quantity exactly. There are zero mismatches.
 
+Examples showing why the result must be checked at employee-allocation level:
+- Product `11Y0659723-04`: source LR3 total = 15; the corrected result allocates 5 to each of three employees, summing to 15.
+- Product `YT13E01448P1-02`: source LR4 total = 13; the corrected result allocates 6 and 7 to two employees, summing to 13. Employee allocations therefore need not be identical.
+- Product `PA13E01064P1-01`: the corrected result records `Số người làm = 1`, not the old value 2.
+
 | Employee/source group | Original input total | Sum of employee allocations |
 |---|---:|---:|
 | LR1 | 97 | 97 |
