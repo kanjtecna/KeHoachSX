@@ -42,20 +42,36 @@
 - Whole week scope: imported plan belongs to the selected Friday–Thursday production week.
 - The user may import data separately for a production group; the application must not require a single combined file for all groups.
 
-[SAFE DATA ISOLATION]
-- Every imported plan must be associated with a scope, date or production week, and group.
-- Importing one group's file must not delete or overwrite another group's plan.
-- Importing a daily plan must not overwrite other dates.
-- The selected group must limit eligible workers to that group (current eligible group codes are LR1–LR4).
-- A dispatch run for one group must not assign its work to another group unless the owner explicitly approves cross-group assignment.
-- Do not infer the file's group or date from its filename. Use explicit UI selection or a verified column/mapping.
-- Duplicate import/replacement policy within the exact same group/date or group/week remains an open decision (see `KNOWN_GAPS.md`).
+[OWNER REQUIREMENT — CONFIRMED]
+- Every imported plan is identified by its scope (date or Friday–Thursday week) and the production-group value read from a column in the file.
+- When the same group and same scope are imported again, replace that group's previous plan for that exact scope. Do not append quantities or double the work.
+- Replacing one group/scope must not overwrite another group or another date/week.
+- The group value must be validated against the configured/recognized group list; do not silently normalize an unknown label into another group.
+- The selected/identified group normally limits eligible workers to that group. Cross-group product cooperation is the controlled exception described in section 1.4.
 
 [OWNER REQUIREMENT — CONFIRMED]
 - In Whole week mode, one uploaded file contains the complete product demand for the selected production week. The file is a **weekly pool**, not a file with manually assigned dates: the scheduling engine distributes its product/Lot work across all seven Friday–Thursday dates according to employee/date capacity and the hard constraints in this document.
 - Do not require the owner to split that weekly file into seven daily files or pre-assign each row to a weekday.
 - The earlier group-isolation requirement remains in force: the weekly import belongs to one explicitly identified production group. It is not implicitly a combined file for LR1–LR4. The UI-versus-file mechanism for identifying the group is still open.
 - The scheduler must account for all imported quantities. It must expose any work that cannot fit within the seven-day capacity; it must not silently drop or falsely mark it completed.
+
+### 1.4 Controlled product sharing across groups
+
+[OWNER REQUIREMENT — CONFIRMED]
+- Default behavior is to keep all work for a product within one production group whenever that group has enough available capacity and eligible workers.
+- A product may be assigned to workers from **two different groups** when necessary to complete the plan or use available capacity more effectively.
+- This cross-group arrangement is an exception, not the default: minimize the number of groups per product and do not split across more than two groups without explicit owner approval.
+- Keep the source quantity attached to its originating group. When two groups share one product code, each group's allocated quantity must remain separately traceable; do not merge quantities and later redistribute them arbitrarily.
+- The assignment result must identify each worker's actual group and preserve the per-group quantities.
+- The sample workbooks contain six product codes planned in two groups. This is an approved example of controlled sharing, not permission to spread every product across groups.
+
+[IMPLEMENTATION GUIDANCE]
+- Treat "same product code" and "same worker team" as different concepts. A product may have separate teams in two groups; a team may also contain workers from more than one group only when the chosen allocation requires that and the result preserves each group's source quantity.
+- Prefer a strong same-group-first optimization objective. Only introduce a second group when the one-group allocation cannot meet capacity/skill/workload constraints or a clear operational benefit is required.
+- Record/communicate why cross-group sharing was needed so it can be reviewed by the production manager.
+
+[OPEN — INPUT COLUMN SEMANTICS]
+- In the supplied LR4 workbook, the second column contains values LR4 through LR13, while the other group files contain LR1, LR2 and LR3 in that column and the target result lists employee departments LR1–LR4. Confirm what LR5–LR13 represent (work-cell/team labels, a different group hierarchy, or invalid values) before mapping them to employee departments. Do not silently treat LR5–LR13 as LR4.
 
 ## 2. Daily availability and capacity model
 
@@ -127,12 +143,20 @@ The currently observed normal shift is 07:30–17:00 with 80 minutes of breaks, 
 - Do not invent status values or approval combinations. The owner will provide approval-filtering logic in a later change.
 - This is a temporary data-selection policy, not a statement that every row is formally approved.
 
+[OWNER REQUIREMENT — CONFIRMED DATA MAPPING]
+- `Overtime.ID` always matches `NHANVIEN.UserName` and therefore the application's employee key derived from that field.
+- Sample `date` format is ISO calendar date `yyyy-MM-dd` (example `2025-03-03`).
+- Sample `SOGIO` is a decimal-hour string using dot decimal separator (example `"1.5"`). Parse as invariant decimal, not as a locale-dependent floating-point string.
+- `createdAt`, `TIME` and `TIME1` in the supplied sample are ISO UTC timestamp strings. They are not overtime duration fields; do not use them to extend overtime duration unless another requirement defines their meaning.
+- Deduplicate by employee ID + normalized overtime date. Repeated rows for the same employee/date contribute only one overtime value; never sum duplicate rows.
+- If duplicate rows for the same employee/date have the same `SOGIO`, collapse them to one logical overtime record.
+- If duplicate rows for the same employee/date have conflicting `SOGIO` values, flag a data conflict and do not sum or silently choose one until the owner defines the tie-breaker.
+- `Overtime.NHOM` is not yet confirmed as an authorization/matching filter. The confirmed employee mapping is by ID.
+
 [REMAINING TECHNICAL CHECKS]
-- Verify how `Overtime.ID` maps to the application employee identifier (`AssemblyWorker.WorkerId` / `NHANVIEN.UserName`).
-- Verify whether `Overtime.NHOM` must match `NHANVIEN.GROUPBOPHAN` or is informational; do not invent a group authorization rule.
-- Inspect actual stored formats for `Overtime.date` and `SOGIO` before parsing. Reject malformed values visibly.
-- Check whether duplicate rows can exist for the same employee/date. Do not silently sum, choose latest or discard duplicates until the owner defines that policy.
-- No overtime-break deduction has been provided. Treat `SOGIO` as the usable overtime duration in this phase.
+- Verify the actual production schema/format against this sample before writing the parser; validate malformed date and decimal values visibly.
+- The initial phase uses no filter on `STATUS`, `QUANLYDUYET` or `GADUYET`.
+- No overtime-break deduction has been provided. Treat `SOGIO` as usable overtime duration in this phase.
 
 ## 5. Leave/absence — `STOCKMANAGEMENT.dbo.thutuchanhchinh`
 
@@ -232,10 +256,12 @@ apply the worker-count target derived from C:
 
 ### 6.6 Missing/invalid jig metadata
 
-- Do not silently substitute N=1, O=1 or unlimited jig capacity when values are missing.
-- Flag products with missing/invalid L/N/O as `JigDataNeedsReview` (or an equivalent explicit validation result).
-- Do not create parallel teams without valid jig metadata.
-- Keep affected products visible and report them; conservative fallback behavior remains to be confirmed before production use.
+[OWNER REQUIREMENT — CONFIRMED]
+- When required jig metadata is missing or invalid, skip the jig constraint for that product in this phase; do not block the entire product solely because jig fields are blank.
+- Continue scheduling that product using the other valid constraints (worker eligibility, leave, daily capacity, skills and workload).
+- Surface an informational warning that jig information was unavailable and the jig-capacity check was skipped.
+- Do not invent L/N/O values or claim that actual jig resource capacity was verified for that product.
+- When valid O is present, enforce the physical jig concurrency rule in section 6.5.
 
 ## 7. Combined dispatch constraints and evaluation order
 
@@ -250,6 +276,8 @@ The future scheduler must evaluate a task against all of these dimensions:
 8. Skill, efficiency and workload ranking selects among eligible workers only; ranking must never override any hard constraint.
 9. The task must be represented on the correct dated timeline, including normal breaks and overtime boundaries.
 10. All imported product quantities must be accounted for; overload, missing metadata and unassigned work must remain visible.
+11. Prefer keeping product work inside one group; permit a second group only as a controlled exception, with at most two groups per product by default.
+12. If the total plan exceeds available capacity, keep the excess work unassigned and show a clear warning. Never drop it or force an over-capacity assignment silently.
 
 Hard constraints (group eligibility, leave, holiday/overtime availability, available minutes and jig-resource capacity) take precedence over soft scoring (skill, workload balance and continuity).
 
@@ -262,7 +290,9 @@ At minimum add deterministic automated tests for:
 - Seven-day week indexing and correct date-to-timeline mapping.
 - A Whole week file is treated as one weekly pool and distributed across all seven dates based on capacity.
 - Daily import does not overwrite other dates.
+- Re-importing the same group and same date/week replaces only that exact plan scope; it does not append or double quantities.
 - One-group import does not overwrite other groups.
+- The same product remains in one group when feasible; cross-group splitting uses no more than two groups by default and preserves each group's source quantity.
 - Every imported quantity is either scheduled or reported as unassigned/overloaded.
 - Each worker is excluded only on dates covered by a leave record with `TRANGTHAI <> 7`.
 - Leave exclusion blocks the whole date; partial-day fields do not shorten the exclusion in this phase.
@@ -278,7 +308,9 @@ At minimum add deterministic automated tests for:
 - O=1 allows a multi-worker team (for example four employees) to share one jig, but prevents a second independent team from using it concurrently.
 - O=2 prevents more than two independent concurrent teams for the product.
 - Holiday matching uses each `nghile.date` value once; no recurring holiday is generated.
-- Missing/invalid L/N/O is flagged, never silently interpreted.
+- Missing/invalid jig fields cause the jig check to be skipped with a warning, not the entire product to be discarded.
+- When weekly capacity is insufficient, remaining work is left unassigned and accompanied by a warning.
+- Duplicate overtime rows for the same ID/date never increase duration; conflicting SOGIO values are surfaced.
 - A worker's task timeline never overlaps their leave or another task, and a jig set is never double-booked.
 - Manual reassignment cannot bypass group, leave, holiday/overtime or jig constraints.
 
@@ -296,3 +328,51 @@ Do not mark the feature complete until all business rules above are implemented 
 
 [REMAINING DESIGN DETAIL]
 - The exact Excel export columns, worksheet layout, formatting and whether it includes unassigned/overloaded tasks still need an owner-approved specification before implementing the export.
+
+
+## 10. Supplied import/result workbooks — reconciliation baseline
+
+The following five uploaded workbooks were inspected as one input/output example. The workbooks themselves are not copied into repository documentation, and employee names/IDs are intentionally not reproduced here.
+
+### 10.1 Input workbook structure observed
+
+The four group input workbooks have no header row and use three columns:
+- Column A: product code.
+- Column B: group/work-cell label (the precise semantics of LR4's labels are unresolved).
+- Column C: requested quantity.
+
+Observed rows: LR1 = 7; LR2 = 13; LR3 = 19; LR4 = 10. Together they contain 49 product/group rows and 43 unique product codes.
+
+### 10.2 Target result workbook structure observed
+
+The target result sheet contains these headers:
+- `UserName`
+- `FullName`
+- `Nhóm`
+- `Status`
+- `Mã sản phẩm`
+- `Số lượng`
+- `Số người làm`
+- `số thứ tự nhóm`
+
+The sample contains 101 employee-assignment rows, 78 unique employee IDs, 43 unique product codes and 55 distinct product/team-sequence combinations.
+
+### 10.3 Reconciliation result
+
+Summing output `Số lượng` by product and employee department matches the corresponding input product/group quantity in all 43 products and all source groups; total quantity is 542 in both input and expected result.
+
+| Source group | Input quantity | Output quantity attributed to employee group |
+|---|---:|---:|
+| LR1 | 97 | 97 |
+| LR2 | 154 | 154 |
+| LR3 | 156 | 156 |
+| LR4 | 135 | 135 |
+| Total | 542 | 542 |
+
+Six products occur in two source group files and are also represented across two employee departments in the target result. This validates controlled cross-group planning in the sample.
+
+### 10.4 Target workbook anomalies to clarify
+
+- Six product/team-sequence combinations do not have a row count equal to the value in `Số người làm`: five combinations show 2 workers but only one employee row; one combination shows 1 worker but two employee rows.
+- Do not infer that `Số người làm` is merely descriptive or automatically repair the target data. Confirm the intended meaning and whether missing employee rows are intentional.
+- In `LR4.xlsx`, column B contains LR4 and labels LR5 through LR13. This must be resolved before using that column as the canonical employee department/group field.
