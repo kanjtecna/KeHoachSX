@@ -82,7 +82,7 @@ Do not silently change this behavior.
 ## 8. Business questions requiring owner confirmation
 
 1. “Số lượng” in uploaded plan is total product quantity, number of lots, or task units? Current parser creates one LotTask per quantity and sets task quantity to 1.
-2. What is the authoritative unit for `GioCongDinhMuc`: minutes per unit, minutes per lot, or hours?
+2. The owner's latest example defines `GioCongDinhMuc`/`GioCongHT` as standard minutes per product unit for the workload calculation. Verify source values with production data; do not re-open the unit definition or multiply quantity more than once.
 3. Why is the baseline divisor 0.3 used? Is it a fixed business rule, configurable baseline, or legacy compensation?
 4. Is efficiency stored as percentage (e.g. 20) rather than ratio (0.2)? What range is valid?
 5. Is a worker allowed to work on more than one product per day?
