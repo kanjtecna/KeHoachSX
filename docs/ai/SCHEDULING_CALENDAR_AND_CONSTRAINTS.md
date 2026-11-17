@@ -70,8 +70,9 @@
 - Prefer a strong same-group-first optimization objective. Only introduce a second group when the one-group allocation cannot meet capacity/skill/workload constraints or a clear operational benefit is required.
 - Record/communicate why cross-group sharing was needed so it can be reviewed by the production manager.
 
-[OPEN — INPUT COLUMN SEMANTICS]
-- In the supplied LR4 workbook, the second column contains values LR4 through LR13, while the other group files contain LR1, LR2 and LR3 in that column and the target result lists employee departments LR1–LR4. Confirm what LR5–LR13 represent (work-cell/team labels, a different group hierarchy, or invalid values) before mapping them to employee departments. Do not silently treat LR5–LR13 as LR4.
+[REFERENCE WORKBOOK]
+- The latest consolidated workbook supersedes earlier standalone group-file snapshots for this example. Its LR1/LR2/LR3/LR4 sheets identify the employee department explicitly in column B.
+- Do not carry forward labels or quantities from older standalone files when they conflict with the latest consolidated workbook.
 
 ## 2. Daily availability and capacity model
 
@@ -334,98 +335,110 @@ Do not mark the feature complete until all business rules above are implemented 
 - The exact Excel export columns, worksheet layout, formatting and whether it includes unassigned/overloaded tasks still need an owner-approved specification before implementing the export.
 
 
-## 10. Supplied import/result workbooks — verified quantity allocation rules
+## 10. Latest consolidated workbook — quantity normalization and group attribution
 
-The owner supplied the corrected `file_ketqua_phanchia(1).xlsx` together with the four original input workbooks LR1–LR4. The corrected workbook contains the expected result plus derived quantity-summary sheets. The rules below are based on exact reconciliation of all product/group rows, not on a visual estimate.
+[REFERENCE SOURCE — LATEST OWNER WORKBOOK]
+The latest workbook `file_ketqua_phanchia(2).xlsx` is the authoritative reference for this analysis. It contains six sheets:
+1. `kết quả`
+2. `số lượng mã sản phẩm cần làm`
+3. `LR1`
+4. `LR2`
+5. `LR3`
+6. `LR4`
 
-### 10.1 Original input files
+This consolidated workbook supersedes the older standalone LR1–LR4 source files and earlier result workbook for values in this allocation example. Do not carry forward the earlier 542-unit group-input interpretation as the current normalized production total.
 
-The original group input workbooks have no header row and use:
-- Column A: product code.
-- Column B: raw group/work-cell label.
-- Column C: **total quantity required from that source group for that product**.
+### 10.1 Observed structure
 
-Observed rows and source totals:
+The `kết quả` sheet has 101 employee-assignment rows (excluding the header), 78 distinct employee IDs, 43 product codes and four employee departments:
+- LR1: 21 assignment rows.
+- LR2: 22 assignment rows.
+- LR3: 35 assignment rows.
+- LR4: 23 assignment rows.
 
-| Source file/group | Rows | Total source quantity |
+Its columns are:
+- `UserName`: employee ID.
+- `FullName`: employee name.
+- `Nhóm`: employee's department.
+- `Status`: employee/status marker in the result.
+- `Mã sản phẩm`: product code.
+- `Số lượng`: the row's quantity numerator, associated with the assigned work; this value is divided by `Số người làm` to calculate this row's normalized contribution.
+- `Số người làm`: denominator/headcount metadata used in the normalization.
+- `số thứ tự nhóm`: sequence metadata. Preserve it; do not assume this column alone defines a globally unique team key.
+
+The sheet `số lượng mã sản phẩm cần làm` contains 43 product codes and their normalized product totals. Each LR sheet has three columns: product code, employee department, and that department's normalized contribution for that product. The LR sheets contain 7, 13, 19 and 10 rows respectively (49 product/department entries in total).
+
+### 10.2 Authoritative quantity formula
+
+For every row in `kết quả`, calculate:
+
+`rowContribution = Số lượng / Số người làm`
+
+Use the following aggregation rules:
+
+1. **Total for one product**:
+   `ProductTotal(P) = SUM(rowContribution for all result rows where Mã sản phẩm = P)`.
+   This must match the value for P in `số lượng mã sản phẩm cần làm`.
+
+2. **Contribution attributed to one department and product**:
+   `DepartmentProduct(G,P) = SUM(rowContribution for result rows where Nhóm = G and Mã sản phẩm = P)`.
+   This must match the value for P in sheet LR1, LR2, LR3 or LR4 for department G.
+
+3. **Department total**:
+   `DepartmentTotal(G) = SUM(DepartmentProduct(G,P) across its product rows)`.
+
+4. **Conservation across department sheets**:
+   For each product P, sum its LR1–LR4 contributions; the result must equal ProductTotal(P), within a small numeric tolerance for decimal representation.
+   Across all products, the sum of the four department totals must equal the product-summary total.
+
+[IMPORTANT SEMANTICS]
+- `Số lượng` must **not** be summed directly across all employee rows as if each row were an independent production quantity. A work quantity may be repeated across the employees who share it.
+- Do not copy a row's full `Số lượng` to each employee as their independent production output.
+- Do not multiply the normalized contribution by `Số người làm` again after computing `rowContribution`.
+- The department tabs are proportional attributions of normalized work according to the departments of the employees participating in each result row. When workers from two departments share work, both department tabs can receive fractional values.
+- Fractional values are valid business results. Never round each row or each department/product share before aggregation. Preserve sufficient decimal precision internally; round only for display/export formatting.
+- If `Số người làm` is blank, zero, negative or non-numeric, do not divide. Flag the row as invalid quantity metadata and keep it visible for correction.
+- `Số người làm` and `số thứ tự nhóm` are distinct metadata. Do not infer that a count of rows grouped by product + sequence must always equal `Số người làm`; retain the supplied values and ask for a team-key rule before building any behavior that depends on reconstructing team membership.
+
+### 10.3 Verified totals from the latest workbook
+
+| Sheet / metric | Entries | Total normalized quantity |
 |---|---:|---:|
-| LR1 | 7 | 97 |
-| LR2 | 13 | 154 |
-| LR3 | 19 | 156 |
-| LR4 | 10 | 135 |
-| Total | 49 | 542 |
+| `số lượng mã sản phẩm cần làm` | 43 products | 317.000000 |
+| LR1 | 7 products | 42.833333 |
+| LR2 | 13 products | 101.250000 |
+| LR3 | 19 products | 101.000000 |
+| LR4 | 10 products | 71.916667 |
+| LR1 + LR2 + LR3 + LR4 | 49 product/department entries | 317.000000 (within floating-point tolerance) |
 
-There are 43 unique product codes. Six codes are present in two source group files. A product may therefore be planned for multiple groups, but cross-group assignment must remain the controlled exception described in section 1.4.
+The four LR sheets have 49 product/department entries but 43 unique product codes because six products are shared across two departments.
 
-### 10.2 Corrected result workbook structure
+The raw sum of the `Số lượng` column over the 101 result rows is 542. This is **not** the normalized product total: it is the numerator before division by `Số người làm`. The correct normalized total is 317. Do not report 542 as the total quantity to be completed based on this workbook.
 
-The result sheet `kết quả` contains:
-- `UserName`
-- `FullName`
-- `Nhóm` — employee's actual department/group
-- `Status`
-- `Mã sản phẩm`
-- `Số lượng` — quantity allocated to this employee
-- `Số người làm` — headcount metadata for the work grouping
-- `số thứ tự nhóm` — group sequence metadata
+### 10.4 Verified products shared across departments
 
-The corrected result contains 101 employee-allocation rows, 78 unique employee IDs and 43 unique product codes.
+The following six products have contributions in two department sheets. Their fractional values are intentional headcount-based attribution, not quantity errors.
 
-[OWNER REQUIREMENT — QUANTITY SEMANTICS]
-- Input column C is a **group-level total**, not the quantity for every individual employee.
-- When a group total is assigned to multiple employees, split the quantity into individual employee allocations. Each result row's `Số lượng` is that employee's allocated quantity; it is not the original group total repeated unchanged.
-- Individual allocations do not have to be identical. The scheduler may distribute remainder/uneven amounts according to the approved team allocation, but must preserve the exact total.
-- The exact invariant is:
-  `SUM(result.Số lượng WHERE product = P AND employee Nhóm = G) = input.C WHERE product = P AND source group = G`.
-- Never multiply an employee's result `Số lượng` by `Số người làm` when reconciling the original plan. Never copy the full source group total to every employee row.
-- Do not divide every row's result `Số lượng` by `Số người làm` to calculate actual production allocation. The corrected workbook's employee rows already contain individual allocated quantities.
-- Preserve `Số người làm` and `số thứ tự nhóm` as separate team/group metadata. Do not use `số thứ tự nhóm` alone as a globally unique key, and do not assume that a simple count by product + sequence always captures cross-group/team membership.
+| Product | Product total | LR1 | LR2 | LR3 | LR4 |
+|---|---:|---:|---:|---:|---:|
+| 14Y0646122-04 | 10 | 0 | 8.75 | 0 | 1.25 |
+| 14Y0646141-04 | 9 | 4.5 | 4.5 | 0 | 0 |
+| PS13E01168P2-01 | 5 | 1.666667 | 0 | 0 | 3.333333 |
+| PX13E01197P1-01 | 15 | 6 | 0 | 0 | 9 |
+| YT13E01438P4-02 | 30 | 12.666667 | 0 | 0 | 17.333333 |
+| YT13E01726P1-02 | 9 | 8 | 0 | 0 | 1 |
 
-### 10.3 Exact reconciliation verified
+For each row in this table, LR1+LR2+LR3+LR4 equals the product total. Do not round fractions to integers or move the fractional remainder to one department arbitrarily.
 
-For every one of the 49 source product/group combinations, the sum of employee-level `Số lượng` in the corrected result matches the original input quantity exactly. There are zero mismatches.
+### 10.5 Examples of the formula
 
-Examples showing why the result must be checked at employee-allocation level:
-- Product `11Y0659723-04`: source LR3 total = 15; the corrected result allocates 5 to each of three employees, summing to 15.
-- Product `YT13E01448P1-02`: source LR4 total = 13; the corrected result allocates 6 and 7 to two employees, summing to 13. Employee allocations therefore need not be identical.
-- Product `PA13E01064P1-01`: the corrected result records `Số người làm = 1`, not the old value 2.
+- A product/team row with `Số lượng = 5` and `Số người làm = 3` contributes 5/3 for each participating employee row. If two of the three employees belong to LR4 and one belongs to LR1, the department attribution is LR4 = 10/3 and LR1 = 5/3; together they equal 5.
+- Product `14Y0646122-04` is 10 overall: LR2 contributes 8.75 and LR4 contributes 1.25.
+- Product `PS13E01168P2-01` is 5 overall: LR1 contributes 1.666667 and LR4 contributes 3.333333.
+- Product `YT13E01438P4-02` is 30 overall: LR1 contributes 12.666667 and LR4 contributes 17.333333.
 
-| Employee/source group | Original input total | Sum of employee allocations |
-|---|---:|---:|
-| LR1 | 97 | 97 |
-| LR2 | 154 | 154 |
-| LR3 | 156 | 156 |
-| LR4 | 135 | 135 |
-| Total | 542 | 542 |
+### 10.6 Workbook formula state and team metadata
 
-At product level, the total of all employee allocations also matches the sum of the source group quantities for that product. This is the primary automated acceptance test for import-to-dispatch quantity conservation.
+All six sheets were inspected; their used cells contain stored values rather than live Excel formulas. Therefore, if the `kết quả` sheet is edited, the product summary and LR1–LR4 sheets must be regenerated/recalculated by the application. Do not assume the workbook will recalculate derived sheets automatically.
 
-### 10.4 Derived quantity-summary sheets — do not confuse with source totals
-
-The corrected workbook also contains:
-- `số lượng mã sản phẩm cần làm`
-- sheets `LR1`, `LR2`, `LR3`, `LR4`
-
-Their values are not the original production totals from the four source files. The supplied workbook's values numerically match the normalized calculation:
-`SUM(employee result Số lượng / Số người làm)`
-grouped by product (for the overall product summary) or by product + employee department (for the LR1–LR4 summary sheets).
-
-These derived values total approximately 317, while the original production quantity and sum of employee-level result allocations is 542. Keep these measures distinct:
-- **Production quantity**: original input C and sum of output employee `Số lượng` = 542.
-- **Normalized quantity summary**: the provided formula-derived sheet values = approximately 317.
-
-Do not label or use the normalized sheet as the raw production quantity unless the owner separately confirms its business meaning. Do not substitute it for the source plan quantity in quantity-conservation checks.
-
-### 10.5 Correction confirmed between previous and corrected result
-
-Comparing the earlier result workbook with the latest corrected workbook shows one changed assignment metadata value:
-- Product `PA13E01064P1-01`: `Số người làm` was changed from 2 to 1 for its single employee row.
-
-Use the corrected workbook as the reference. Do not restore the old headcount value.
-
-### 10.6 Group sharing and remaining interpretation checks
-
-- Six products occur in two source group files and are also represented across two employee departments in the corrected result. This is permitted in the sample and confirms that strict one-product/one-department assignment is not a hard rule.
-- Keep a product within one department by default. Use a second department only when needed, with no more than two departments per product by default, and preserve each source group's exact quantity.
-- In `LR4.xlsx`, column B contains LR4 and labels LR5 through LR13. Preserve these raw values; do not silently treat LR5–LR13 as employee department LR4. Confirm their exact meaning/mapping before implementing group-column normalization.
-- Preserve the corrected `Số người làm` and `số thứ tự nhóm` values. Their relationship when one product is shared across departments or sequences is not fully inferable from column values alone; do not automatically "repair" rows using a simple row-count rule.
+The current workbook has 55 distinct product + `số thứ tự nhóm` pairs. The sequence/headcount metadata must be preserved, but the pair alone is not proven to be a complete unique team key. Do not automatically rewrite `Số người làm` based only on counting rows by product + sequence.
